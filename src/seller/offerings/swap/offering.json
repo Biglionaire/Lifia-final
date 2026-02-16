@@ -1,0 +1,25 @@
+{
+  "name": "swap",
+  "description": "Generate LI.FI swap quote + transactionRequest for same-chain token swap via DEX aggregation. Example: swap 5 USDC to ETH on base receiver 0x...",
+  "jobFee": 0.2,
+  "jobFeeType": "fixed",
+  "slaMinutes": 5,
+  "requiredFunds": false,
+  "requirement": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Example: swap 5 USDC to ETH on base receiver 0x0000000000000000000000000000000000000000"
+      },
+      "amount": { "type": "string" },
+      "tokenIn": { "type": "string", "description": "Source token symbol or address" },
+      "tokenOut": { "type": "string", "description": "Destination token symbol or address" },
+      "chain": { "type": "string", "description": "Chain name (base, ethereum, arbitrum, polygon, bsc)" },
+      "receiver": { "type": "string" },
+      "sender": { "type": "string" },
+      "slippage": { "type": "number" }
+    }
+  },
+  "deliverable": "string"
+}

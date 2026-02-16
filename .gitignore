@@ -1,0 +1,34 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Config (contains API keys, session tokens)
+config.json
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# Data / cache
+data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo

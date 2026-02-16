@@ -1,4 +1,7 @@
 import axios, { type AxiosError } from "axios";
+import { chainIdOf } from "./chains.js";
+
+export { parseUnitsDecimal } from "./amount.js";
 
 const API = "https://li.quest/v1";
 
@@ -26,6 +29,15 @@ export async function lifiGet<T>(path: string, params: Record<string, any>) {
   }
 }
 
+/**
+ * Resolve chain name/alias to LI.FI numeric chain ID.
+ */
+export function getChainId(chain: string): number {
+  const id = chainIdOf(chain);
+  if (!id) throw new Error(`Unsupported chain: ${chain}`);
+  return id;
+}
+
 export async function getToken(chainId: number, token: string) {
   // /token?chain=...&token=... (token bisa symbol atau address)
   return lifiGet<any>("/token", { chain: chainId, token });
@@ -37,6 +49,6 @@ export async function getQuote(params: Record<string, any>) {
 
 export async function getStatus(params: Record<string, any>) {
   // /status?txHash=... (+optional fromChain, toChain, bridge)
-  // status: NOT_FOUND / PENDING / DONE / FAILED :contentReference[oaicite:3]{index=3}
+  // status: NOT_FOUND / PENDING / DONE / FAILED
   return lifiGet<any>("/status", params);
 }
