@@ -1,0 +1,50 @@
+{
+  "name": "lifi_bridge_executor",
+  "description": "Seller-executed bridge/swap via LI.FI. Buyer transfers funds to executor first (ACP requiredFunds). Supports fromChain=base, toChain in {ethereum, arbitrum, polygon, bsc}. Optional: toToken for cross-chain swap (DEX+bridge aggregation).",
+  "jobFee": 0.2,
+  "jobFeeType": "percentage",
+  "requiredFunds": true,
+  "requirement": {
+    "type": "object",
+    "properties": {
+      "amountHuman": {
+        "type": "string",
+        "description": "Human-readable amount (e.g. '5' for 5 USDC)."
+      },
+      "token": {
+        "type": "string",
+        "description": "Source token symbol on Base (MVP: USDC).",
+        "default": "USDC"
+      },
+      "toToken": {
+        "type": "string",
+        "description": "Destination token symbol on target chain (optional). If omitted, defaults to token (bridge only)."
+      },
+      "fromChain": {
+        "type": "string",
+        "description": "Source chain (executor-only MVP: base).",
+        "enum": ["base"]
+      },
+      "toChain": {
+        "type": "string",
+        "description": "Destination chain.",
+        "enum": ["ethereum", "arbitrum", "polygon", "bsc"]
+      },
+      "receiver": {
+        "type": "string",
+        "description": "Receiver address on destination chain."
+      },
+      "slippage": {
+        "type": "number",
+        "description": "Slippage as decimal (0.005=0.5%) OR percent (0.5=0.5%). Default 0.5%.",
+        "default": 0.005
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "If true, only returns quote/txRequest without broadcasting.",
+        "default": false
+      }
+    },
+    "required": ["amountHuman", "fromChain", "toChain", "receiver"]
+  }
+}
