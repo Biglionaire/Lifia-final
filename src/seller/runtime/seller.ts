@@ -261,12 +261,6 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
-  
-  // This should always be set if we get here, but TypeScript needs the check
-  if (!walletAddress) {
-    console.error("[seller] Failed to resolve wallet address: unknown error");
-    process.exit(1);
-  }
 
   const offerings = listOfferings();
   console.log(
@@ -277,7 +271,7 @@ async function main() {
 
   connectAcpSocket({
     acpUrl: ACP_URL,
-    walletAddress,
+    walletAddress: walletAddress!,  // Non-null assertion: either success sets it or we exit(1)
     callbacks: {
       onNewTask: (data) => {
         handleNewTask(data).catch((err) =>

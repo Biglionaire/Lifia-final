@@ -24,7 +24,7 @@ const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 /**
  * Utility function to retry a request with exponential backoff.
  * @param fn - The async function to retry (should return a Promise)
- * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @param maxRetries - Maximum number of retry attempts after initial failure (default: 3, meaning 4 total attempts)
  * @param initialDelayMs - Initial delay in milliseconds (default: 1000)
  * @returns The result of the successful request
  */
