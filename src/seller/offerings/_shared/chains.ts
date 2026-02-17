@@ -16,6 +16,9 @@ export const CHAIN_ID: Record<SupportedChain, number> = {
   BSC: 56,
 };
 
+// ACP backend operates exclusively on Base chain
+export const ACP_CHAIN_ID = 8453;
+
 const ALIASES: Record<string, SupportedChain> = {
   ethereum: "ETHEREUM",
   eth: "ETHEREUM",

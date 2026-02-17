@@ -2,7 +2,7 @@ import type { ExecuteJobResult, ValidationResult } from "../../runtime/offeringT
 import { getAddress, erc20Abi, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getChainClients } from "../_shared/evm.js";
-import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS } from "../_shared/chains.js";
+import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
 
 // ---------------------------------------------------------------------------
@@ -109,11 +109,9 @@ export function requestAdditionalFunds(req: any): {
   const token = String(req?.token ?? "USDC").toUpperCase();
   const fromChainKey = String(req?.fromChain ?? "base").toLowerCase();
 
-  // Always use Base chain (8453) for token address resolution since ACP operates on Base
-  const BASE_CHAIN_ID = 8453;
-
+  // Always use Base chain for token address resolution since ACP operates on Base
   // Look up token address from common-token table on Base
-  const tokenAddress = getCommonTokenAddress(BASE_CHAIN_ID, token);
+  const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, token);
 
   if (!tokenAddress) {
     throw new Error(`Token ${token} not found on Base chain. ACP only supports Base chain tokens.`);
