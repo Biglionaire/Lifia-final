@@ -19,9 +19,18 @@ export type SwapRequest = {
   slippage?: number;
 };
 
+export type WrapRequest = {
+  action: "wrap" | "unwrap";
+  amount: string;
+  chain: string;
+  receiver: string;
+  sender?: string;
+};
+
 export type AgentCommand =
   | { kind: "bridge"; amount: string; tokenIn: string; tokenOut: string; fromChain: string; toChain: string; receiver: string; sender?: string; slippage?: number; order?: string }
-  | { kind: "swap"; amount: string; tokenIn: string; tokenOut: string; chain: string; receiver: string; sender?: string; slippage?: number; order?: string };
+  | { kind: "swap"; amount: string; tokenIn: string; tokenOut: string; chain: string; receiver: string; sender?: string; slippage?: number; order?: string }
+  | { kind: "wrap"; action: "wrap" | "unwrap"; amount: string; chain: string; receiver: string; sender?: string; order?: string };
 
 function pick(m: RegExpMatchArray, name: string) {
   // @ts-ignore
@@ -77,9 +86,35 @@ export function parseSwapCommand(text: string): SwapRequest {
 }
 
 /**
- * Parse a generic agent command (swap or bridge).
+ * Parse a wrap/unwrap command string.
+ * - "wrap 5 ETH on base receiver 0x..."
+ * - "unwrap 5 WETH on base receiver 0x..."
+ */
+export function parseWrapCommand(text: string): WrapRequest {
+  const input = (text ?? "").trim();
+
+  const re =
+    /^(?<action>wrap|unwrap)\s+(?<amount>\d+(?:\.\d+)?)\s+(?:[A-Za-z0-9:_\.\-]+)\s+on\s+(?<chain>[A-Za-z0-9_\-]+)(?:\s+chain)?(?:\s+sender\s+(?<sender>0x[a-fA-F0-9]{40}))?(?:\s+receiver(?:\s+address)?\s+(?<receiver>0x[a-fA-F0-9]{40}))?\s*$/i;
+
+  const m = input.match(re);
+  if (!m) throw new Error(`Unrecognized command. Example: wrap 5 ETH on base receiver 0x...`);
+
+  const action = pick(m, "action").toLowerCase() as "wrap" | "unwrap";
+  const amount = pick(m, "amount");
+  const chain = pick(m, "chain");
+  const sender = pick(m, "sender") || undefined;
+  const receiver = pick(m, "receiver") || "";
+
+  if (!receiver) throw new Error("Missing receiver. Example: ... receiver 0xabc...");
+  return { action, amount, chain, receiver, sender };
+}
+
+/**
+ * Parse a generic agent command (swap, bridge, wrap, or unwrap).
  * - "swap 5 USDC to ETH on base receiver 0x..."
  * - "bridge 5 USDC from base to arbitrum receiver 0x..."
+ * - "wrap 5 ETH on base receiver 0x..."
+ * - "unwrap 5 WETH on base receiver 0x..."
  */
 export function parseAgentCommand(text: string): AgentCommand {
   const input = (text ?? "").trim();
@@ -114,5 +149,17 @@ export function parseAgentCommand(text: string): AgentCommand {
     };
   }
 
-  throw new Error(`Unknown command verb: "${verb}". Supported: swap, bridge.`);
+  if (verb === "wrap" || verb === "unwrap") {
+    const r = parseWrapCommand(input);
+    return {
+      kind: "wrap",
+      action: r.action,
+      amount: r.amount,
+      chain: r.chain,
+      receiver: r.receiver,
+      sender: r.sender,
+    };
+  }
+
+  throw new Error(`Unknown command verb: "${verb}". Supported: swap, bridge, wrap, unwrap.`);
 }
