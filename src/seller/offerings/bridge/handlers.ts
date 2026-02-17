@@ -2,13 +2,13 @@ import type { ExecuteJobResult, ValidationResult } from "../../runtime/offeringT
 import { getAddress, erc20Abi, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getChainClients } from "../_shared/evm.js";
-import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS } from "../_shared/chains.js";
+import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run bridge
 // ---------------------------------------------------------------------------
-const SUPPORTED_FROM_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+const SUPPORTED_FROM_CHAINS = ["base"];
 const SUPPORTED_TO_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
 
 // ---------------------------------------------------------------------------
@@ -108,22 +108,13 @@ export function requestAdditionalFunds(req: any): {
   const amountHuman = Number(String(req?.amountHuman ?? "").trim());
   const token = String(req?.token ?? "USDC").toUpperCase();
   const fromChainKey = String(req?.fromChain ?? "base").toLowerCase();
-  const fromChainId = chainIdOf(fromChainKey);
 
-  // Look up token address from common-token table
-  const tokenAddress = fromChainId
-    ? getCommonTokenAddress(fromChainId, token)
-    : undefined;
+  // Always use Base chain for token address resolution since ACP operates on Base
+  // Look up token address from common-token table on Base
+  const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, token);
 
   if (!tokenAddress) {
-    // Unknown token — we still request funds, but the caller/ACP may need to resolve manually.
-    // Use zero address as fallback so the structure remains valid.
-    return {
-      content: `Send ${amountHuman} ${token} (${fromChainKey}) to executor=${recipient}. Token address not in lookup table — executor must be pre-funded or provide tokenAddress manually.`,
-      amount: amountHuman,
-      tokenAddress: "0x0000000000000000000000000000000000000000",
-      recipient,
-    };
+    throw new Error(`Token ${token} not found on Base chain. ACP only supports Base chain tokens.`);
   }
 
   return {

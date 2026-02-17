@@ -2,7 +2,7 @@ import type { ExecuteJobResult, ValidationResult } from "../../runtime/offeringT
 import { getAddress, parseEther, formatEther, erc20Abi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getChainClients } from "../_shared/evm.js";
-import { chainIdOf, WETH_ADDRESS, NATIVE_TOKEN, VIEM_CHAINS } from "../_shared/chains.js";
+import { chainIdOf, WETH_ADDRESS, NATIVE_TOKEN, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getQuote } from "../_shared/lifi.js";
 import { parseWrapCommand, type WrapRequest } from "../_shared/command.js";
 
@@ -46,7 +46,7 @@ const WETH_ABI = [
 // LI.FI uses zero address for native tokens
 const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+const SUPPORTED_CHAINS = ["base"];
 
 // Wrapped native token symbol per chain
 const WRAPPED_SYMBOL: Record<number, string> = {
@@ -158,22 +158,31 @@ export function requestAdditionalFunds(req: any): {
 
   const r = coerceRequest(req);
   const amountNum = Number(r.amountHuman);
-  const chainId = chainIdOf(r.chain)!;
-  const nativeSymbol = NATIVE_TOKEN[chainId] ?? "ETH";
+  
+  // Always use Base chain since ACP operates on Base
+  const nativeSymbol = NATIVE_TOKEN[ACP_CHAIN_ID] ?? "ETH";
 
   if (r.action === "wrap") {
-    // Need native ETH to wrap
+    // For wrap action: use WETH address on Base instead of zero address
+    // ACP needs a valid ERC-20 contract to call decimals() on
+    const wethAddr = WETH_ADDRESS[ACP_CHAIN_ID];
+    if (!wethAddr) {
+      throw new Error(`WETH address not configured for Base chain (${ACP_CHAIN_ID})`);
+    }
     return {
       content: `Send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping.`,
       amount: amountNum,
-      tokenAddress: NATIVE_TOKEN_ADDRESS,
+      tokenAddress: wethAddr,
       recipient,
     };
   }
 
-  // Need wrapped token to unwrap
-  const wethAddr = WETH_ADDRESS[chainId];
-  const wrappedSymbol = WRAPPED_SYMBOL[chainId] ?? "WETH";
+  // For unwrap action: use WETH address (already correct)
+  const wethAddr = WETH_ADDRESS[ACP_CHAIN_ID];
+  if (!wethAddr) {
+    throw new Error(`WETH address not configured for Base chain (${ACP_CHAIN_ID})`);
+  }
+  const wrappedSymbol = WRAPPED_SYMBOL[ACP_CHAIN_ID] ?? "WETH";
   return {
     content: `Send ${r.amountHuman} ${wrappedSymbol} (${r.chain}) to executor=${recipient} for unwrapping.`,
     amount: amountNum,
