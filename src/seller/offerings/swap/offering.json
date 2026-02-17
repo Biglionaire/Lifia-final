@@ -1,25 +1,49 @@
 {
   "name": "swap",
-  "description": "Generate LI.FI swap quote + transactionRequest for same-chain token swap via DEX aggregation. Example: swap 5 USDC to ETH on base receiver 0x...",
-  "jobFee": 0.2,
-  "jobFeeType": "fixed",
+  "description": "Seller-executed same-chain token swap via LI.FI DEX aggregation. Buyer transfers funds to executor (ACP requiredFunds). Supports chains: ethereum, base, arbitrum, polygon, bsc. Any token supported via LI.FI.",
+  "jobFee": 1,
+  "jobFeeType": "percentage",
+  "requiredFunds": true,
   "slaMinutes": 5,
-  "requiredFunds": false,
   "requirement": {
     "type": "object",
     "properties": {
+      "amountHuman": {
+        "type": "string",
+        "description": "Human-readable amount (e.g. '5' for 5 USDC)."
+      },
+      "tokenIn": {
+        "type": "string",
+        "description": "Source token symbol (e.g. USDC, WETH, USDT, DAI) or contract address."
+      },
+      "tokenOut": {
+        "type": "string",
+        "description": "Destination token symbol or contract address."
+      },
+      "chain": {
+        "type": "string",
+        "description": "Chain to execute swap on.",
+        "enum": ["ethereum", "base", "arbitrum", "polygon", "bsc"]
+      },
+      "receiver": {
+        "type": "string",
+        "description": "Receiver address for the swapped tokens."
+      },
+      "slippage": {
+        "type": "number",
+        "description": "Slippage as decimal (0.005=0.5%) OR percent (0.5=0.5%). Default 0.5%.",
+        "default": 0.005
+      },
       "command": {
         "type": "string",
-        "description": "Example: swap 5 USDC to ETH on base receiver 0x0000000000000000000000000000000000000000"
+        "description": "Alternative: natural-language command. Example: 'swap 5 USDC to ETH on base receiver 0x...'"
       },
-      "amount": { "type": "string" },
-      "tokenIn": { "type": "string", "description": "Source token symbol or address" },
-      "tokenOut": { "type": "string", "description": "Destination token symbol or address" },
-      "chain": { "type": "string", "description": "Chain name (base, ethereum, arbitrum, polygon, bsc)" },
-      "receiver": { "type": "string" },
-      "sender": { "type": "string" },
-      "slippage": { "type": "number" }
-    }
-  },
-  "deliverable": "string"
+      "dryRun": {
+        "type": "boolean",
+        "description": "If true, only returns quote/txRequest without broadcasting.",
+        "default": false
+      }
+    },
+    "required": ["amountHuman", "tokenIn", "tokenOut", "chain", "receiver"]
+  }
 }

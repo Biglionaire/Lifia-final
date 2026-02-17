@@ -1,49 +1,109 @@
 import type { ExecuteJobResult, ValidationResult } from "../../runtime/offeringTypes.js";
-import { chainIdOf } from "../_shared/chains.js";
-import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
-import { parseUnitsDecimal } from "../_shared/amount.js";
+import { getAddress, erc20Abi, parseUnits } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { getChainClients } from "../_shared/evm.js";
+import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
+import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
 
-function isHexAddress(x: string) {
-  return /^0x[a-fA-F0-9]{40}$/.test((x ?? "").trim());
+// ---------------------------------------------------------------------------
+// Supported chains for executor-run swap
+// ---------------------------------------------------------------------------
+const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function env(name: string): string {
+  const v = process.env[name];
+  if (!v || !v.trim()) throw new Error(`Missing env: ${name}`);
+  return v.trim();
 }
 
-function coerceRequest(req: any): SwapRequest {
-  // 1) command string
-  if (typeof req === "string") return parseSwapCommand(req);
-  if (typeof req?.command === "string" && req.command.trim()) return parseSwapCommand(req.command);
+function toSlippageDecimal(x: unknown): number {
+  const n = typeof x === "number" ? x : Number(x ?? "");
+  if (!Number.isFinite(n) || n <= 0) return 0.005;
+  if (n > 1) return n / 100;
+  if (n >= 0.1) return n / 100;
+  return n;
+}
 
-  // 2) structured
-  const amount = String(req?.amount ?? "").trim();
+function isHexAddress(s: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(s);
+}
+
+function extractSpenders(quote: any): string[] {
+  const s = new Set<string>();
+  const add = (x: any) => {
+    if (typeof x === "string" && isHexAddress(x)) s.add(x.toLowerCase());
+  };
+
+  add(quote?.estimate?.approvalAddress);
+  const steps = Array.isArray(quote?.includedSteps) ? quote.includedSteps : [];
+  for (const st of steps) add(st?.estimate?.approvalAddress);
+
+  return [...s];
+}
+
+interface SwapParams {
+  amountHuman: string;
+  tokenIn: string;
+  tokenOut: string;
+  chain: string;
+  receiver: string;
+  slippage?: number;
+  dryRun: boolean;
+}
+
+function coerceRequest(req: any): SwapParams {
+  // Support command string
+  if (typeof req === "string") {
+    const r = parseSwapCommand(req);
+    return { amountHuman: r.amount, tokenIn: r.tokenIn, tokenOut: r.tokenOut, chain: r.chain, receiver: r.receiver, slippage: r.slippage, dryRun: false };
+  }
+  if (typeof req?.command === "string" && req.command.trim()) {
+    const r = parseSwapCommand(req.command);
+    return { amountHuman: r.amount, tokenIn: r.tokenIn, tokenOut: r.tokenOut, chain: r.chain, receiver: r.receiver, slippage: r.slippage, dryRun: Boolean(req?.dryRun ?? false) };
+  }
+
+  // Structured request
+  const amountHuman = String(req?.amountHuman ?? req?.amount ?? "").trim();
   const tokenIn = String(req?.tokenIn ?? "").trim();
   const tokenOut = String(req?.tokenOut ?? "").trim();
   const chain = String(req?.chain ?? "").trim();
   const receiver = String(req?.receiver ?? "").trim();
-  const sender = req?.sender ? String(req.sender).trim() : undefined;
   const slippage = typeof req?.slippage === "number" ? req.slippage : undefined;
+  const dryRun = Boolean(req?.dryRun ?? false);
 
-  if (!amount || !tokenIn || !tokenOut || !chain || !receiver) {
-    throw new Error("Missing fields. Provide 'command' OR {amount, tokenIn, tokenOut, chain, receiver}.");
+  if (!amountHuman || !tokenIn || !tokenOut || !chain || !receiver) {
+    throw new Error("Missing fields. Provide 'command' OR {amountHuman, tokenIn, tokenOut, chain, receiver}.");
   }
-  return { amount, tokenIn, tokenOut, chain, receiver, sender, slippage };
+  return { amountHuman, tokenIn, tokenOut, chain, receiver, slippage, dryRun };
 }
 
+// ---------------------------------------------------------------------------
+// Validate
+// ---------------------------------------------------------------------------
 export function validateRequirements(request: any): ValidationResult {
   try {
     const r = coerceRequest(request);
+
+    const chainKey = r.chain.toLowerCase();
+    if (!SUPPORTED_CHAINS.includes(chainKey)) {
+      return { valid: false, reason: `Unsupported chain: ${r.chain}. Supported: ${SUPPORTED_CHAINS.join(", ")}` };
+    }
 
     const chainId = chainIdOf(r.chain);
     if (!chainId) return { valid: false, reason: `Unsupported chain: ${r.chain}` };
 
     if (!isHexAddress(r.receiver)) return { valid: false, reason: "receiver must be a 0x address" };
-    if (r.sender && !isHexAddress(r.sender)) return { valid: false, reason: "sender must be a 0x address" };
 
     if (r.tokenIn.toLowerCase() === r.tokenOut.toLowerCase()) {
       return { valid: false, reason: "tokenIn and tokenOut must be different" };
     }
 
-    const n = Number(r.amount);
-    if (!Number.isFinite(n) || n <= 0) return { valid: false, reason: "amount must be a positive number" };
+    const n = Number(r.amountHuman);
+    if (!Number.isFinite(n) || n <= 0) return { valid: false, reason: "amountHuman must be a positive number" };
 
     return { valid: true };
   } catch (e: any) {
@@ -51,60 +111,233 @@ export function validateRequirements(request: any): ValidationResult {
   }
 }
 
-export async function executeJob(request: any): Promise<ExecuteJobResult> {
-  const r = coerceRequest(request);
+// ---------------------------------------------------------------------------
+// Payment request
+// ---------------------------------------------------------------------------
+export function requestPayment(req: any): string {
+  try {
+    const r = coerceRequest(req);
+    return `To execute swap: please transfer ${r.amountHuman} ${r.tokenIn} on ${r.chain} to the executor wallet (ACP Funds Transfer). Then I will swap to ${r.tokenOut} and deliver to receiver=${r.receiver}.`;
+  } catch {
+    return "Swap request accepted.";
+  }
+}
 
-  const chainId = chainIdOf(r.chain)!;
-  const sender = r.sender ?? r.receiver;
-  const receiver = r.receiver;
+// ---------------------------------------------------------------------------
+// Request additional funds
+// ---------------------------------------------------------------------------
+export function requestAdditionalFunds(req: any): {
+  content?: string;
+  amount: number;
+  tokenAddress: string;
+  recipient: string;
+} {
+  const pk = env("EXECUTOR_PRIVATE_KEY");
+  const account = privateKeyToAccount(pk as `0x${string}`);
+  const recipient = account.address;
 
-  // Resolve tokens on the same chain via LI.FI
-  const fromTokenInfo = await getToken(chainId, r.tokenIn);
-  const toTokenInfo = await getToken(chainId, r.tokenOut);
+  const r = coerceRequest(req);
+  const amountNum = Number(r.amountHuman);
+  const chainKey = r.chain.toLowerCase();
+  const chainId = chainIdOf(chainKey);
 
-  const fromAmountBI = parseUnitsDecimal(r.amount, fromTokenInfo.decimals);
-  const fromAmount = fromAmountBI.toString();
+  const tokenAddress = chainId
+    ? getCommonTokenAddress(chainId, r.tokenIn)
+    : undefined;
 
-  // Same-chain swap: fromChain === toChain
-  const quote = await getQuote({
-    fromChain: chainId,
-    toChain: chainId,
-    fromToken: fromTokenInfo.address,
-    toToken: toTokenInfo.address,
-    fromAmount,
-    fromAddress: sender,
-    toAddress: receiver,
-    slippage: r.slippage,
-  });
+  if (!tokenAddress) {
+    return {
+      content: `Send ${r.amountHuman} ${r.tokenIn} (${chainKey}) to executor=${recipient}. Token address not in lookup table — executor must be pre-funded or provide tokenAddress manually.`,
+      amount: amountNum,
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      recipient,
+    };
+  }
 
-  const deliverable = {
-    mode: "quote_only",
-    input: {
-      amountHuman: r.amount,
-      chain: r.chain,
-      sender,
-      receiver,
-      tokenIn: r.tokenIn,
-      tokenOut: r.tokenOut,
-    },
-    resolved: {
-      chainId,
-      fromToken: fromTokenInfo,
-      toToken: toTokenInfo,
-      fromAmount,
-    },
-    lifi: {
-      quoteId: quote.id,
-      tool: quote.tool,
-      estimate: quote.estimate,
-      transactionRequest: quote.transactionRequest,
-    },
-    next: "Buyer should sign & broadcast transactionRequest on source chain.",
-    notes: [
-      "LI.FI quote includes transactionRequest ready to sign & send.",
-      "If fromToken is ERC20, you may need to approve the spender (see quote.estimate.approvalAddress).",
-    ],
+  return {
+    content: `Send ${r.amountHuman} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed.`,
+    amount: amountNum,
+    tokenAddress,
+    recipient,
   };
+}
 
-  return { deliverable: JSON.stringify(deliverable, null, 2) };
+// ---------------------------------------------------------------------------
+// Execute
+// ---------------------------------------------------------------------------
+export async function executeJob(req: any): Promise<ExecuteJobResult> {
+  try {
+    const pk = env("EXECUTOR_PRIVATE_KEY");
+    const account = privateKeyToAccount(pk as `0x${string}`);
+
+    const r = coerceRequest(req);
+    const chainKey = r.chain.toLowerCase();
+    const receiver = getAddress(r.receiver);
+    const slippage = toSlippageDecimal(r.slippage);
+
+    const chainId = chainIdOf(chainKey);
+    if (!chainId) {
+      return { deliverable: { type: "json", value: { ok: false, error: `Unsupported chain=${chainKey}` } } };
+    }
+
+    if (!VIEM_CHAINS[chainId]) {
+      return { deliverable: { type: "json", value: { ok: false, error: `Cannot execute on chainId=${chainId}` } } };
+    }
+
+    const { publicClient, walletClient, chain } = getChainClients(chainId);
+
+    // Resolve tokens on the same chain via LI.FI
+    const fromTokenInfo = await getToken(chainId, r.tokenIn);
+    const toTokenInfo = await getToken(chainId, r.tokenOut);
+
+    const fromAmount = parseUnits(r.amountHuman, Number(fromTokenInfo.decimals));
+
+    // Check executor balance
+    const isNative = fromTokenInfo.address === "0x0000000000000000000000000000000000000000";
+    let bal: bigint;
+
+    if (isNative) {
+      bal = await publicClient.getBalance({ address: account.address });
+    } else {
+      bal = await publicClient.readContract({
+        address: getAddress(fromTokenInfo.address),
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [account.address],
+      });
+    }
+
+    if (bal < fromAmount) {
+      return {
+        deliverable: {
+          type: "json",
+          value: {
+            ok: false,
+            error: "Insufficient executor token balance",
+            executor: account.address,
+            chain: chainKey,
+            chainId,
+            tokenIn: r.tokenIn,
+            needed: fromAmount.toString(),
+            have: bal.toString(),
+            hint: "Ensure the executor is funded on the source chain.",
+          },
+        },
+      };
+    }
+
+    // Get LI.FI quote (same-chain swap)
+    const quote = await getQuote({
+      fromChain: chainId,
+      toChain: chainId,
+      fromToken: fromTokenInfo.address,
+      toToken: toTokenInfo.address,
+      fromAmount: fromAmount.toString(),
+      fromAddress: account.address,
+      toAddress: receiver,
+      slippage,
+      integrator: "lifi-api",
+    });
+
+    // Handle ERC-20 approvals (not needed for native tokens)
+    let approvals: { approveTxs: string[]; allowanceReport: Record<string, string> } = {
+      approveTxs: [],
+      allowanceReport: {},
+    };
+
+    if (!isNative) {
+      const spenders = extractSpenders(quote);
+      const tokenAddr = getAddress(fromTokenInfo.address) as `0x${string}`;
+
+      for (const sp of spenders) {
+        const spender = getAddress(sp) as `0x${string}`;
+        const allowance: bigint = await publicClient.readContract({
+          address: tokenAddr,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [account.address, spender],
+        });
+        approvals.allowanceReport[spender] = allowance.toString();
+
+        if (allowance >= fromAmount) continue;
+
+        const max = 2n ** 256n - 1n;
+        const hash = await walletClient.writeContract({
+          account,
+          address: tokenAddr,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [spender, max],
+          chain,
+        });
+        await publicClient.waitForTransactionReceipt({ hash });
+        approvals.approveTxs.push(hash);
+      }
+    }
+
+    const txReq = quote?.transactionRequest;
+    if (!txReq?.to || !txReq?.data) {
+      return { deliverable: { type: "json", value: { ok: false, error: "LI.FI quote missing transactionRequest" } } };
+    }
+
+    if (r.dryRun) {
+      return {
+        deliverable: {
+          type: "json",
+          value: {
+            ok: true,
+            mode: "dryRun",
+            executor: account.address,
+            input: { amountHuman: r.amountHuman, tokenIn: r.tokenIn, tokenOut: r.tokenOut, chain: chainKey, receiver, slippage },
+            resolved: { chainId, fromToken: fromTokenInfo, toToken: toTokenInfo, fromAmount: fromAmount.toString() },
+            approvals,
+            lifi: { tool: quote?.tool, quoteId: quote?.id },
+            quote,
+          },
+        },
+      };
+    }
+
+    // Broadcast tx on chain
+    const hash = await walletClient.sendTransaction({
+      account,
+      to: getAddress(txReq.to),
+      data: txReq.data,
+      value: BigInt(txReq.value ?? "0x0"),
+      gas: txReq.gasLimit ? BigInt(txReq.gasLimit) : undefined,
+      gasPrice: txReq.gasPrice ? BigInt(txReq.gasPrice) : undefined,
+      chain,
+    });
+
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    return {
+      deliverable: {
+        type: "json",
+        value: {
+          ok: receipt.status === "success",
+          mode: "executed",
+          executor: account.address,
+          input: { amountHuman: r.amountHuman, tokenIn: r.tokenIn, tokenOut: r.tokenOut, chain: chainKey, receiver, dryRun: false },
+          resolved: { chainId, fromToken: fromTokenInfo, toToken: toTokenInfo, fromAmount: fromAmount.toString(), slippage },
+          approvals,
+          lifi: { tool: quote?.tool, quoteId: quote?.id },
+          tx: {
+            hash,
+            status: receipt.status,
+            blockNumber: receipt.blockNumber?.toString?.() ?? receipt.blockNumber,
+          },
+          note: "Same-chain swap confirmed.",
+        },
+      },
+    };
+  } catch (e: any) {
+    const err = e?.response?.data ?? e?.message ?? e;
+    return {
+      deliverable: {
+        type: "json",
+        value: { ok: false, error: "Swap execution failed", details: typeof err === "object" ? JSON.stringify(err) : String(err) },
+      },
+    };
+  }
 }

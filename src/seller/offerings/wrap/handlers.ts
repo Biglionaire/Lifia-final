@@ -46,7 +46,16 @@ const WETH_ABI = [
 // LI.FI uses zero address for native tokens
 const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum"];
+const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+
+// Wrapped native token symbol per chain
+const WRAPPED_SYMBOL: Record<number, string> = {
+  1: "WETH",
+  8453: "WETH",
+  42161: "WETH",
+  137: "WMATIC",
+  56: "WBNB",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -122,11 +131,13 @@ export function validateRequirements(req: any): ValidationResult {
 export function requestPayment(req: any): string {
   try {
     const r = coerceRequest(req);
-    const nativeSymbol = NATIVE_TOKEN[chainIdOf(r.chain)!] ?? "ETH";
+    const chainId = chainIdOf(r.chain)!;
+    const nativeSymbol = NATIVE_TOKEN[chainId] ?? "ETH";
+    const wrappedSymbol = WRAPPED_SYMBOL[chainId] ?? "WETH";
     if (r.action === "wrap") {
-      return `To wrap: send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor. Will return WETH to receiver=${r.receiver}.`;
+      return `To wrap: send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor. Will return ${wrappedSymbol} to receiver=${r.receiver}.`;
     }
-    return `To unwrap: send ${r.amountHuman} WETH (${r.chain}) to executor. Will return ${nativeSymbol} to receiver=${r.receiver}.`;
+    return `To unwrap: send ${r.amountHuman} ${wrappedSymbol} (${r.chain}) to executor. Will return ${nativeSymbol} to receiver=${r.receiver}.`;
   } catch {
     return "Wrap/unwrap request accepted.";
   }
@@ -160,10 +171,11 @@ export function requestAdditionalFunds(req: any): {
     };
   }
 
-  // Need WETH to unwrap
+  // Need wrapped token to unwrap
   const wethAddr = WETH_ADDRESS[chainId];
+  const wrappedSymbol = WRAPPED_SYMBOL[chainId] ?? "WETH";
   return {
-    content: `Send ${r.amountHuman} WETH (${r.chain}) to executor=${recipient} for unwrapping.`,
+    content: `Send ${r.amountHuman} ${wrappedSymbol} (${r.chain}) to executor=${recipient} for unwrapping.`,
     amount: amountNum,
     tokenAddress: wethAddr,
     recipient,
@@ -353,6 +365,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
     }
 
     const nativeSymbol = NATIVE_TOKEN[chainId] ?? "ETH";
+    const wrappedSymbol = WRAPPED_SYMBOL[chainId] ?? "WETH";
     return {
       deliverable: {
         type: "json",
@@ -370,8 +383,8 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
           receiver,
           txHash,
           description: r.action === "wrap"
-            ? `Wrapped ${r.amountHuman} ${nativeSymbol} to WETH on ${r.chain}`
-            : `Unwrapped ${r.amountHuman} WETH to ${nativeSymbol} on ${r.chain}`,
+            ? `Wrapped ${r.amountHuman} ${nativeSymbol} to ${wrappedSymbol} on ${r.chain}`
+            : `Unwrapped ${r.amountHuman} ${wrappedSymbol} to ${nativeSymbol} on ${r.chain}`,
         },
       },
     };

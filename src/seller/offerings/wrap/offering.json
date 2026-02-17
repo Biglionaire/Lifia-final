@@ -1,8 +1,8 @@
 {
   "name": "wrap",
-  "description": "Wrap native token (ETH) to WETH or unwrap WETH to native ETH. Executor-run on Ethereum, Base, and Arbitrum. Uses LI.FI DEX aggregation with direct WETH contract fallback (Uniswap-compatible).",
-  "jobFee": 0.1,
-  "jobFeeType": "fixed",
+  "description": "Wrap native token to wrapped version (e.g. ETH->WETH, MATIC->WMATIC, BNB->WBNB) or unwrap back. Executor-run on Ethereum, Base, Arbitrum, Polygon, and BSC. Uses LI.FI DEX aggregation with direct contract fallback.",
+  "jobFee": 1,
+  "jobFeeType": "percentage",
   "requiredFunds": true,
   "slaMinutes": 5,
   "requirement": {
@@ -10,7 +10,7 @@
     "properties": {
       "action": {
         "type": "string",
-        "description": "wrap (native ETH -> WETH) or unwrap (WETH -> native ETH).",
+        "description": "wrap (native -> wrapped) or unwrap (wrapped -> native).",
         "enum": ["wrap", "unwrap"]
       },
       "amountHuman": {
@@ -20,7 +20,7 @@
       "chain": {
         "type": "string",
         "description": "Chain to wrap/unwrap on.",
-        "enum": ["ethereum", "base", "arbitrum"]
+        "enum": ["ethereum", "base", "arbitrum", "polygon", "bsc"]
       },
       "receiver": {
         "type": "string",
