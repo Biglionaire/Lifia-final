@@ -1,41 +1,8 @@
 {
   "name": "wrap",
-  "description": "Wrap native token (ETH) to WETH or unwrap WETH to native ETH. Executor-run on Ethereum, Base, and Arbitrum. Uses LI.FI DEX aggregation with direct WETH contract fallback (Uniswap-compatible).",
-  "jobFee": 0.1,
-  "jobFeeType": "fixed",
-  "requiredFunds": true,
-  "slaMinutes": 5,
-  "requirement": {
-    "type": "object",
-    "properties": {
-      "action": {
-        "type": "string",
-        "description": "wrap (native ETH -> WETH) or unwrap (WETH -> native ETH).",
-        "enum": ["wrap", "unwrap"]
-      },
-      "amountHuman": {
-        "type": "string",
-        "description": "Human-readable amount (e.g. '0.5' for 0.5 ETH/WETH)."
-      },
-      "chain": {
-        "type": "string",
-        "description": "Chain to wrap/unwrap on.",
-        "enum": ["ethereum", "base", "arbitrum"]
-      },
-      "receiver": {
-        "type": "string",
-        "description": "Receiver address for the wrapped/unwrapped tokens."
-      },
-      "command": {
-        "type": "string",
-        "description": "Alternative: natural-language command string. Example: 'wrap 5 ETH on base receiver 0x...'"
-      },
-      "dryRun": {
-        "type": "boolean",
-        "description": "If true, returns quote without broadcasting.",
-        "default": false
-      }
-    },
-    "required": ["amountHuman", "action", "chain", "receiver"]
-  }
+  "description": "Wrap/unwrap ETH<->WETH (Base/Ethereum/Arbitrum). Returns tx request for the client to sign.",
+  "fee": 0,
+  "jobFeeType": "percentage",
+  "jobFee": 0.01,
+  "requiredFunds": true
 }

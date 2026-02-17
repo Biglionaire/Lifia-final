@@ -1,391 +1,192 @@
-import type { ExecuteJobResult, ValidationResult } from "../../runtime/offeringTypes.js";
-import { getAddress, parseEther, formatEther, erc20Abi } from "viem";
+import "dotenv/config";
+import {
+  createPublicClient,
+  http,
+  parseUnits,
+  getAddress,
+  encodeFunctionData,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { getChainClients } from "../_shared/evm.js";
-import { chainIdOf, WETH_ADDRESS, NATIVE_TOKEN, VIEM_CHAINS } from "../_shared/chains.js";
-import { getQuote } from "../_shared/lifi.js";
-import { parseWrapCommand, type WrapRequest } from "../_shared/command.js";
+import { base, mainnet, arbitrum } from "viem/chains";
 
-// ---------------------------------------------------------------------------
-// WETH ABI (deposit = wrap, withdraw = unwrap)
-// ---------------------------------------------------------------------------
-const WETH_ABI = [
-  {
-    name: "deposit",
-    type: "function",
-    stateMutability: "payable",
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: "withdraw",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "wad", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "balance", type: "uint256" }],
-  },
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "value", type: "uint256" },
-    ],
-    outputs: [{ name: "ok", type: "bool" }],
-  },
+import type { ExecuteJobResult, ValidationResult } from "../../runtime/offeringTypes.js";
+
+/**
+ * Supported chains (per offering description)
+ */
+type ChainKey = "base" | "eth" | "ethereum" | "mainnet" | "arb" | "arbitrum";
+
+function normChain(x: any): ChainKey {
+  return String(x ?? "").trim().toLowerCase() as ChainKey;
+}
+
+function chainFromKey(key: ChainKey) {
+  switch (key) {
+    case "base":
+      return { chain: base, rpc: process.env.BASE_RPC_URL || "https://mainnet.base.org" };
+    case "eth":
+    case "ethereum":
+    case "mainnet":
+      return { chain: mainnet, rpc: process.env.ETHEREUM_RPC_URL || mainnet.rpcUrls.default.http[0] };
+    case "arb":
+    case "arbitrum":
+      return { chain: arbitrum, rpc: process.env.ARBITRUM_RPC_URL || arbitrum.rpcUrls.default.http[0] };
+    default:
+      throw new Error(`Unsupported chain: ${key}`);
+  }
+}
+
+/**
+ * WETH addresses per chain
+ */
+const WETH_BY_CHAINID: Record<number, `0x${string}`> = {
+  1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  8453: "0x4200000000000000000000000000000000000006",
+  42161: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+};
+
+/**
+ * USDC addresses (used for ACP requiredFunds flow)
+ */
+const USDC_BY_CHAINID: Record<number, `0x${string}`> = {
+  1: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+};
+
+function normalizeAmountHuman(x: any) {
+  return String(x ?? "").trim().replace(",", ".");
+}
+
+function toNumberAmountSafe(x: string) {
+  const n = Number(normalizeAmountHuman(x));
+  if (!isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function pctToGross(net: number, feePct: number) {
+  const denom = 1 - feePct;
+  if (denom <= 0) return net;
+  return Math.ceil((net / denom) * 1_000_000) / 1_000_000;
+}
+
+const wethAbi = [
+  { type: "function", name: "deposit", stateMutability: "payable", inputs: [], outputs: [] },
+  { type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [{ name: "wad", type: "uint256" }], outputs: [] },
 ] as const;
 
-// LI.FI uses zero address for native tokens
-const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
-
-const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum"];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function env(name: string): string {
-  const v = process.env[name];
-  if (!v || !v.trim()) throw new Error(`Missing env: ${name}`);
-  return v.trim();
-}
-
-function isHexAddress(s: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(s);
-}
-
-function coerceRequest(req: any): { action: "wrap" | "unwrap"; amountHuman: string; chain: string; receiver: string; dryRun: boolean } {
-  // Support command string
-  if (typeof req === "string") {
-    const r = parseWrapCommand(req);
-    return { action: r.action, amountHuman: r.amount, chain: r.chain, receiver: r.receiver, dryRun: false };
-  }
-  if (typeof req?.command === "string" && req.command.trim()) {
-    const r = parseWrapCommand(req.command);
-    return { action: r.action, amountHuman: r.amount, chain: r.chain, receiver: r.receiver, dryRun: Boolean(req?.dryRun ?? false) };
-  }
-
-  // Structured request
-  const action = String(req?.action ?? "").toLowerCase();
-  if (action !== "wrap" && action !== "unwrap") {
-    throw new Error("action must be 'wrap' or 'unwrap'");
-  }
-  return {
-    action: action as "wrap" | "unwrap",
-    amountHuman: String(req?.amountHuman ?? "").trim(),
-    chain: String(req?.chain ?? "").trim(),
-    receiver: String(req?.receiver ?? "").trim(),
-    dryRun: Boolean(req?.dryRun ?? false),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Validate
-// ---------------------------------------------------------------------------
-export function validateRequirements(req: any): ValidationResult {
+/**
+ * IMPORTANT: must NOT throw (avoid unhandled rejection).
+ */
+export function validateRequirements(ctx: any): ValidationResult {
   try {
-    const r = coerceRequest(req);
+    const input = (ctx?.input ?? ctx?.job?.input ?? ctx ?? {}) as any;
 
-    if (!r.amountHuman || Number(r.amountHuman) <= 0) {
-      return { valid: false, reason: "amountHuman must be a positive number" };
+    const amountHuman = normalizeAmountHuman(input.amountHuman ?? input.amount);
+    const n = toNumberAmountSafe(amountHuman);
+    if (!n) {
+      return { valid: false, reason: 'Invalid amount. Example: "wrap 0.001 ETH on base"' };
     }
 
-    if (!SUPPORTED_CHAINS.includes(r.chain.toLowerCase())) {
-      return { valid: false, reason: `Unsupported chain: ${r.chain}. Supported: ${SUPPORTED_CHAINS.join(", ")}` };
-    }
+    const chainKey = normChain(input.chain ?? input.fromChain ?? "base");
+    chainFromKey(chainKey);
 
-    const chainId = chainIdOf(r.chain);
-    if (!chainId || !WETH_ADDRESS[chainId]) {
-      return { valid: false, reason: `No WETH address configured for chain: ${r.chain}` };
-    }
-
-    if (!isHexAddress(r.receiver)) {
-      return { valid: false, reason: "receiver must be a valid 0x address" };
+    const token = String(input.token ?? input.asset ?? "ETH").trim().toUpperCase();
+    if (token !== "ETH" && token !== "WETH") {
+      return { valid: false, reason: `Unsupported token "${token}". Use ETH (wrap) or WETH (unwrap).` };
     }
 
     return { valid: true };
   } catch (e: any) {
-    return { valid: false, reason: e?.message ?? "Invalid request" };
+    return { valid: false, reason: e?.message ?? String(e) };
   }
 }
 
-// ---------------------------------------------------------------------------
-// Request payment
-// ---------------------------------------------------------------------------
-export function requestPayment(req: any): string {
-  try {
-    const r = coerceRequest(req);
-    const nativeSymbol = NATIVE_TOKEN[chainIdOf(r.chain)!] ?? "ETH";
-    if (r.action === "wrap") {
-      return `To wrap: send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor. Will return WETH to receiver=${r.receiver}.`;
-    }
-    return `To unwrap: send ${r.amountHuman} WETH (${r.chain}) to executor. Will return ${nativeSymbol} to receiver=${r.receiver}.`;
-  } catch {
-    return "Wrap/unwrap request accepted.";
-  }
-}
+/**
+ * REQUIRED because offering.json has requiredFunds=true
+ * Bridge-style SYNC return: { content, amount, tokenAddress, recipient, chainId }
+ */
+export function requestAdditionalFunds(request: any) {
+  const pk = (process.env.EXECUTOR_PRIVATE_KEY || "").trim();
+  if (!pk) throw new Error("Missing EXECUTOR_PRIVATE_KEY");
+  const executor = privateKeyToAccount(pk as `0x${string}`).address;
 
-// ---------------------------------------------------------------------------
-// Request additional funds
-// ---------------------------------------------------------------------------
-export function requestAdditionalFunds(req: any): {
-  content?: string;
-  amount: number;
-  tokenAddress: string;
-  recipient: string;
-} {
-  const pk = env("EXECUTOR_PRIVATE_KEY");
-  const account = privateKeyToAccount(pk as `0x${string}`);
-  const recipient = account.address;
+  const input = (request?.input ?? request?.job?.input ?? request ?? {}) as any;
+  const chainKey = normChain(input.chain ?? input.fromChain ?? "base");
+  const { chain } = chainFromKey(chainKey);
 
-  const r = coerceRequest(req);
-  const amountNum = Number(r.amountHuman);
-  const chainId = chainIdOf(r.chain)!;
-  const nativeSymbol = NATIVE_TOKEN[chainId] ?? "ETH";
+  const tokenAddress = USDC_BY_CHAINID[chain.id];
+  if (!tokenAddress) throw new Error(`USDC address not configured for chainId ${chain.id}`);
 
-  if (r.action === "wrap") {
-    // Need native ETH to wrap
-    return {
-      content: `Send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping.`,
-      amount: amountNum,
-      tokenAddress: NATIVE_TOKEN_ADDRESS,
-      recipient,
-    };
-  }
+  // small default deposit grossed-up for 1% fee
+  const net = 0.01;
+  const gross = pctToGross(net, 0.01);
 
-  // Need WETH to unwrap
-  const wethAddr = WETH_ADDRESS[chainId];
   return {
-    content: `Send ${r.amountHuman} WETH (${r.chain}) to executor=${recipient} for unwrapping.`,
-    amount: amountNum,
-    tokenAddress: wethAddr,
-    recipient,
+    content: `Please transfer ${gross} USDC to executor (includes 1% ACP job fee).`,
+    amount: gross,
+    tokenAddress,
+    recipient: executor,
+    chainId: chain.id,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Execute — try LI.FI first, fallback to direct WETH contract
-// ---------------------------------------------------------------------------
-export async function executeJob(req: any): Promise<ExecuteJobResult> {
-  try {
-    const r = coerceRequest(req);
-    const pk = env("EXECUTOR_PRIVATE_KEY");
-    const account = privateKeyToAccount(pk as `0x${string}`);
+/**
+ * Returns a tx request (deposit/withdraw on WETH).
+ */
+export async function executeJob(ctx: any): Promise<ExecuteJobResult> {
+  const input = (ctx?.input ?? ctx?.job?.input ?? ctx ?? {}) as any;
 
-    const chainId = chainIdOf(r.chain);
-    if (!chainId) {
-      return { deliverable: { type: "json", value: { ok: false, error: `Unsupported chain: ${r.chain}` } } };
-    }
-    if (!VIEM_CHAINS[chainId]) {
-      return { deliverable: { type: "json", value: { ok: false, error: `Cannot execute on chain: ${r.chain}` } } };
-    }
-
-    const wethAddress = WETH_ADDRESS[chainId];
-    if (!wethAddress) {
-      return { deliverable: { type: "json", value: { ok: false, error: `No WETH configured for chain: ${r.chain}` } } };
-    }
-
-    const { publicClient, walletClient, chain } = getChainClients(chainId);
-    const receiver = getAddress(r.receiver);
-    const amountWei = parseEther(r.amountHuman);
-
-    // Check balance
-    if (r.action === "wrap") {
-      const ethBalance = await publicClient.getBalance({ address: account.address });
-      if (ethBalance < amountWei) {
-        return {
-          deliverable: {
-            type: "json",
-            value: {
-              ok: false,
-              error: "Insufficient native balance for wrap",
-              executor: account.address,
-              chain: r.chain,
-              needed: amountWei.toString(),
-              have: ethBalance.toString(),
-            },
-          },
-        };
-      }
-    } else {
-      const wethBalance: bigint = await publicClient.readContract({
-        address: wethAddress,
-        abi: WETH_ABI,
-        functionName: "balanceOf",
-        args: [account.address],
-      });
-      if (wethBalance < amountWei) {
-        return {
-          deliverable: {
-            type: "json",
-            value: {
-              ok: false,
-              error: "Insufficient WETH balance for unwrap",
-              executor: account.address,
-              chain: r.chain,
-              needed: amountWei.toString(),
-              have: wethBalance.toString(),
-            },
-          },
-        };
-      }
-    }
-
-    if (r.dryRun) {
-      return {
-        deliverable: {
-          type: "json",
-          value: {
-            ok: true,
-            mode: "dryRun",
-            action: r.action,
-            executor: account.address,
-            chain: r.chain,
-            chainId,
-            amountHuman: r.amountHuman,
-            amountWei: amountWei.toString(),
-            wethAddress,
-            receiver,
-          },
-        },
-      };
-    }
-
-    // --- Strategy 1: Try LI.FI swap (ETH <-> WETH on same chain) ---
-    let lifiUsed = false;
-    let txHash: string | undefined;
-
-    try {
-      const fromToken = r.action === "wrap" ? NATIVE_TOKEN_ADDRESS : wethAddress;
-      const toToken = r.action === "wrap" ? wethAddress : NATIVE_TOKEN_ADDRESS;
-
-      const quote = await getQuote({
-        fromChain: chainId,
-        toChain: chainId,
-        fromToken,
-        toToken,
-        fromAmount: amountWei.toString(),
-        fromAddress: account.address,
-        toAddress: receiver,
-        slippage: 0.001,
-        integrator: "lifi-api",
-      });
-
-      const txReq = quote?.transactionRequest;
-      if (txReq?.to && txReq?.data) {
-        // LI.FI returned a valid transactionRequest — broadcast it
-        txHash = await walletClient.sendTransaction({
-          account,
-          to: getAddress(txReq.to),
-          data: txReq.data,
-          value: BigInt(txReq.value ?? "0x0"),
-          gas: txReq.gasLimit ? BigInt(txReq.gasLimit) : undefined,
-          chain,
-        });
-        lifiUsed = true;
-      }
-    } catch (lifiErr: any) {
-      // LI.FI failed — fall through to direct WETH contract
-      console.log(`[wrap] LI.FI failed, falling back to direct WETH contract: ${lifiErr?.message ?? lifiErr}`);
-    }
-
-    // --- Strategy 2: Direct WETH contract (Uniswap-compatible fallback) ---
-    if (!txHash) {
-      if (r.action === "wrap") {
-        // Step 1: WETH.deposit() — wraps ETH to WETH (credited to executor)
-        txHash = await walletClient.writeContract({
-          account,
-          address: wethAddress,
-          abi: WETH_ABI,
-          functionName: "deposit",
-          value: amountWei,
-          chain,
-        });
-
-        await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
-
-        // Step 2: If receiver != executor, transfer WETH to receiver
-        if (receiver.toLowerCase() !== account.address.toLowerCase()) {
-          const transferHash = await walletClient.writeContract({
-            account,
-            address: wethAddress,
-            abi: WETH_ABI,
-            functionName: "transfer",
-            args: [receiver, amountWei],
-            chain,
-          });
-          await publicClient.waitForTransactionReceipt({ hash: transferHash });
-        }
-      } else {
-        // Step 1: WETH.withdraw() — unwraps WETH to ETH (credited to executor)
-        txHash = await walletClient.writeContract({
-          account,
-          address: wethAddress,
-          abi: WETH_ABI,
-          functionName: "withdraw",
-          args: [amountWei],
-          chain,
-        });
-
-        await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
-
-        // Step 2: If receiver != executor, send ETH to receiver
-        if (receiver.toLowerCase() !== account.address.toLowerCase()) {
-          const sendHash = await walletClient.sendTransaction({
-            account,
-            to: receiver,
-            value: amountWei,
-            chain,
-          });
-          await publicClient.waitForTransactionReceipt({ hash: sendHash });
-        }
-      }
-    } else {
-      // Wait for LI.FI tx
-      await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
-    }
-
-    const nativeSymbol = NATIVE_TOKEN[chainId] ?? "ETH";
-    return {
-      deliverable: {
-        type: "json",
-        value: {
-          ok: true,
-          mode: "executed",
-          action: r.action,
-          method: lifiUsed ? "lifi" : "weth_contract_direct",
-          executor: account.address,
-          chain: r.chain,
-          chainId,
-          amountHuman: r.amountHuman,
-          amountWei: amountWei.toString(),
-          wethAddress,
-          receiver,
-          txHash,
-          description: r.action === "wrap"
-            ? `Wrapped ${r.amountHuman} ${nativeSymbol} to WETH on ${r.chain}`
-            : `Unwrapped ${r.amountHuman} WETH to ${nativeSymbol} on ${r.chain}`,
-        },
-      },
-    };
-  } catch (e: any) {
-    const err = e?.response?.data ?? e?.message ?? e;
-    return {
-      deliverable: {
-        type: "json",
-        value: {
-          ok: false,
-          error: "Wrap/unwrap execution failed",
-          details: typeof err === "object" ? JSON.stringify(err) : String(err),
-        },
-      },
-    };
+  const amountHuman = normalizeAmountHuman(input.amountHuman ?? input.amount);
+  const n = toNumberAmountSafe(amountHuman);
+  if (!n) {
+    return { deliverable: { type: "json", value: { ok: false, error: 'Invalid amount. Example: "wrap 0.001 ETH on base"' } } };
   }
+
+  const chainKey = normChain(input.chain ?? input.fromChain ?? "base");
+  const { chain, rpc } = chainFromKey(chainKey);
+
+  const weth = WETH_BY_CHAINID[chain.id];
+  if (!weth) {
+    return { deliverable: { type: "json", value: { ok: false, error: `WETH not configured for chainId ${chain.id}` } } };
+  }
+
+  const token = String(input.token ?? input.asset ?? "ETH").trim().toUpperCase();
+  const action = token === "WETH" ? "unwrap" : "wrap";
+
+  const amountWei = parseUnits(amountHuman, 18);
+  const data =
+    action === "wrap"
+      ? encodeFunctionData({ abi: wethAbi, functionName: "deposit", args: [] })
+      : encodeFunctionData({ abi: wethAbi, functionName: "withdraw", args: [amountWei] });
+
+  const tx = {
+    chainId: chain.id,
+    to: getAddress(weth),
+    data,
+    value: action === "wrap" ? amountWei.toString() : "0",
+  };
+
+  try {
+    const publicClient = createPublicClient({ chain, transport: http(rpc) });
+    await publicClient.getBytecode({ address: getAddress(weth) });
+  } catch {
+    // ignore
+  }
+
+  return {
+    deliverable: {
+      type: "json",
+      value: {
+        ok: true,
+        mode: "txRequest",
+        action,
+        chain: chainKey,
+        amountHuman,
+        token,
+        tx,
+      },
+    },
+  };
 }
+

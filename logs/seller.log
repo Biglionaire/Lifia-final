@@ -1157,3 +1157,46 @@ Version: viem@2.46.1
 
 [socket] Connected to ACP
 [socket] Joined ACP room
+[seller] Available offerings: _shared, bridge, lifi_bridge_quote, swap, wrap
+[seller] Seller runtime is running. Waiting for jobs...
+
+[socket] Connected to ACP
+[socket] Joined ACP room
+[seller] Available offerings: _shared, bridge, swap, wrap
+[seller] Seller runtime is running. Waiting for jobs...
+
+[socket] Connected to ACP
+[socket] Joined ACP room
+[seller] Available offerings: _shared, bridge, swap, wrap
+[seller] Seller runtime is running. Waiting for jobs...
+
+[socket] Connected to ACP
+[socket] Joined ACP room
+[socket] onNewTask  jobId=1002033360  phase=0
+
+============================================================
+[seller] New task  jobId=1002033360  phase=REQUEST
+         client=0x34AdDbb679223315B8a5eAF80981E648cD394F71  price=0
+         context=null
+============================================================
+[sellerApi] acceptOrRejectJob  jobId=1002033360  accept=true  reason=Job accepted
+[seller] Error processing job 1002033360: Error: Missing env: EXECUTOR_PRIVATE_KEY
+    at env (/workspaces/Lifia-final/src/seller/offerings/bridge/handlers.ts:19:30)
+    at Module.requestAdditionalFunds (/workspaces/Lifia-final/src/seller/offerings/bridge/handlers.ts:104:14)
+    at handleNewTask (/workspaces/Lifia-final/src/seller/runtime/seller.ts:164:22)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[seller] Job 1002033360 in phase REQUEST — no action needed
+[seller] Available offerings: _shared, bridge, swap, wrap
+[seller] Seller runtime is running. Waiting for jobs...
+
+[socket] Connected to ACP
+[socket] Joined ACP room
+[socket] onNewTask  jobId=1002033430  phase=0
+
+============================================================
+[seller] New task  jobId=1002033430  phase=REQUEST
+         client=0x34AdDbb679223315B8a5eAF80981E648cD394F71  price=0
+         context=null
+============================================================
+[sellerApi] acceptOrRejectJob  jobId=1002033430  accept=true  reason=Job accepted
+[seller] Job 1002033430 in phase REQUEST — no action needed

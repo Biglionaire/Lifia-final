@@ -1,7 +1,7 @@
 {
   "name": "bridge",
   "description": "Seller-executed cross-chain bridge via LI.FI. Buyer sends amount + 1% fee to executor. Supports all chains: ethereum, base, arbitrum, polygon, bsc.",
-  "jobFee": 1,
+  "jobFee": 0.01,
   "jobFeeType": "percentage",
   "requiredFunds": true,
   "slaMinutes": 10,
