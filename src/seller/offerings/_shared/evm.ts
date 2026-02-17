@@ -23,11 +23,11 @@ export function getBaseClients() {
 
 /**
  * Create viem public + wallet clients for any supported chain.
- * Supported: Ethereum (1), Base (8453), Arbitrum (42161).
+ * Supported: Ethereum (1), Base (8453), Arbitrum (42161), Polygon (137), BSC (56).
  */
 export function getChainClients(chainId: number) {
   const chain = VIEM_CHAINS[chainId];
-  if (!chain) throw new Error(`No viem chain config for chainId ${chainId}. Supported: 1, 8453, 42161`);
+  if (!chain) throw new Error(`No viem chain config for chainId ${chainId}. Supported: 1, 8453, 42161, 137, 56`);
 
   const account = requireExecutorAccount();
   const rpcUrl = getRpcUrl(chainId);

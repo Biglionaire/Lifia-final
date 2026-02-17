@@ -8,7 +8,7 @@ import { getToken, getQuote } from "../_shared/lifi.js";
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run bridge
 // ---------------------------------------------------------------------------
-const SUPPORTED_FROM_CHAINS = ["ethereum", "base", "arbitrum"];
+const SUPPORTED_FROM_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
 const SUPPORTED_TO_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
 
 // ---------------------------------------------------------------------------
@@ -160,9 +160,8 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
       return { deliverable: { type: "json", value: { ok: false, error: `Unsupported toChain=${toChainKey}` } } };
     }
 
-    // We need a viem chain to execute — only ETH/Base/ARB
     if (!VIEM_CHAINS[fromChainId]) {
-      return { deliverable: { type: "json", value: { ok: false, error: `Cannot execute on chainId=${fromChainId}. Executor supports: Ethereum, Base, Arbitrum.` } } };
+      return { deliverable: { type: "json", value: { ok: false, error: `Cannot execute on chainId=${fromChainId}. Executor supports: Ethereum, Base, Arbitrum, Polygon, BSC.` } } };
     }
 
     // Get chain clients for the source chain
