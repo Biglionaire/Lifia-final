@@ -1,8 +1,13 @@
 import { erc20Abi, type Address } from "viem";
-import { getBaseClients } from "./evm.js";
+import { getBaseClients, getChainClients } from "./evm.js";
 
-export async function getErc20Balance(token: Address, owner: Address) {
-  const { publicClient } = getBaseClients();
+function getClients(chainId?: number) {
+  if (chainId) return getChainClients(chainId);
+  return getBaseClients();
+}
+
+export async function getErc20Balance(token: Address, owner: Address, chainId?: number) {
+  const { publicClient } = getClients(chainId);
   return publicClient.readContract({
     address: token,
     abi: erc20Abi,
@@ -11,8 +16,8 @@ export async function getErc20Balance(token: Address, owner: Address) {
   }) as Promise<bigint>;
 }
 
-export async function getAllowance(token: Address, owner: Address, spender: Address) {
-  const { publicClient } = getBaseClients();
+export async function getAllowance(token: Address, owner: Address, spender: Address, chainId?: number) {
+  const { publicClient } = getClients(chainId);
   return publicClient.readContract({
     address: token,
     abi: erc20Abi,
@@ -21,10 +26,10 @@ export async function getAllowance(token: Address, owner: Address, spender: Addr
   }) as Promise<bigint>;
 }
 
-export async function ensureAllowanceExact(token: Address, spender: Address, amount: bigint) {
-  const { publicClient, walletClient, account } = getBaseClients();
+export async function ensureAllowanceExact(token: Address, spender: Address, amount: bigint, chainId?: number) {
+  const { publicClient, walletClient, account } = getClients(chainId);
 
-  const current = await getAllowance(token, account.address, spender);
+  const current = await getAllowance(token, account.address, spender, chainId);
   if (current >= amount) return { approved: false as const };
 
   const hash = await walletClient.writeContract({

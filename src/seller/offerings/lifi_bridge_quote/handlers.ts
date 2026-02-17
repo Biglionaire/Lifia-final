@@ -18,15 +18,15 @@ export async function executeJob(requirements: any) {
   const parsed = parseAgentCommand(requirements.command);
 
   if (parsed.kind === "swap") {
-    const chainId = await getChainId(parsed.chain);
+    const chainId = getChainId(parsed.chain);
     const fromTok = await getToken(chainId, parsed.tokenIn);
     const toTok = await getToken(chainId, parsed.tokenOut);
 
     const fromAmount = parseUnitsDecimal(parsed.amount, Number(fromTok.decimals));
-    const fromAddress = parsed.sender ?? parsed.receiver; // fallback
+    const fromAddress = parsed.sender ?? parsed.receiver;
     const quote = await getQuote({
-      fromChainId: chainId,
-      toChainId: chainId,
+      fromChain: chainId,
+      toChain: chainId,
       fromToken: fromTok.address,
       toToken: toTok.address,
       fromAmount,
@@ -55,18 +55,22 @@ export async function executeJob(requirements: any) {
     };
   }
 
+  if (parsed.kind === "wrap") {
+    throw new Error("Wrap/unwrap is not supported by this offering. Use the 'wrap' offering instead.");
+  }
+
   // bridge
-  const fromChainId = await getChainId(parsed.fromChain);
-  const toChainId = await getChainId(parsed.toChain);
+  const fromChainId = getChainId(parsed.fromChain);
+  const toChainId = getChainId(parsed.toChain);
 
   const fromTok = await getToken(fromChainId, parsed.tokenIn);
   const toTok = await getToken(toChainId, parsed.tokenOut);
 
   const fromAmount = parseUnitsDecimal(parsed.amount, Number(fromTok.decimals));
-  const fromAddress = parsed.sender ?? parsed.receiver; // fallback
+  const fromAddress = parsed.sender ?? parsed.receiver;
   const quote = await getQuote({
-    fromChainId,
-    toChainId,
+    fromChain: fromChainId,
+    toChain: toChainId,
     fromToken: fromTok.address,
     toToken: toTok.address,
     fromAmount,
