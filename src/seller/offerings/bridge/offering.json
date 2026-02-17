@@ -1,7 +1,7 @@
 {
   "name": "bridge",
   "description": "Seller-executed cross-chain bridge via LI.FI. Buyer transfers funds to executor (ACP requiredFunds). Supports fromChain and toChain in {ethereum, base, arbitrum, polygon, bsc}. Any token supported via LI.FI DEX+bridge aggregation. Optional toToken for cross-chain swap.",
-  "jobFee": 1,
+  "jobFee": 0.01,
   "jobFeeType": "percentage",
   "requiredFunds": true,
   "slaMinutes": 10,

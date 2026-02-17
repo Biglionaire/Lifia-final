@@ -1,7 +1,7 @@
 {
   "name": "wrap",
   "description": "Wrap native token to wrapped version (e.g. ETH->WETH, MATIC->WMATIC, BNB->WBNB) or unwrap back. Executor-run on Ethereum, Base, Arbitrum, Polygon, and BSC. Uses LI.FI DEX aggregation with direct contract fallback.",
-  "jobFee": 1,
+  "jobFee": 0.01,
   "jobFeeType": "percentage",
   "requiredFunds": true,
   "slaMinutes": 5,
