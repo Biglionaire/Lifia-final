@@ -16,6 +16,7 @@ build/
 # Logs
 logs/
 *.log
+*.pid
 
 # Data / cache
 data/
@@ -32,3 +33,11 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Package lock (optional, uncomment if not needed in repo)
+# package-lock.json
+
+# Seller runtime artifacts
+seller.pid
+offerings/
+resources/
