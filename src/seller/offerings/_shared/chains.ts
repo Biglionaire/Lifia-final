@@ -1,4 +1,4 @@
-import { mainnet, base, arbitrum } from "viem/chains";
+import { mainnet, base, arbitrum, polygon, bsc } from "viem/chains";
 import type { Chain } from "viem";
 
 export type SupportedChain =
@@ -47,12 +47,14 @@ export function chainIdOf(input: string): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Viem chain objects (only chains we can execute transactions on)
+// Viem chain objects — all 5 supported chains
 // ---------------------------------------------------------------------------
 export const VIEM_CHAINS: Record<number, Chain> = {
   1: mainnet,
   8453: base,
   42161: arbitrum,
+  137: polygon,
+  56: bsc,
 };
 
 // ---------------------------------------------------------------------------
@@ -76,12 +78,15 @@ export function getRpcUrl(chainId: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// WETH / Wrapped-native-token addresses per chain
+// Wrapped native token addresses per chain (WETH / WMATIC / WBNB)
+// All implement the same deposit()/withdraw() interface.
 // ---------------------------------------------------------------------------
 export const WETH_ADDRESS: Record<number, `0x${string}`> = {
-  1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-  8453: "0x4200000000000000000000000000000000000006",
-  42161: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+  1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",    // WETH
+  8453: "0x4200000000000000000000000000000000000006",     // WETH
+  42161: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",   // WETH
+  137: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",     // WMATIC
+  56: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",      // WBNB
 };
 
 // ---------------------------------------------------------------------------
@@ -91,8 +96,19 @@ export const NATIVE_TOKEN: Record<number, string> = {
   1: "ETH",
   8453: "ETH",
   42161: "ETH",
-  137: "MATIC",
+  137: "POL",
   56: "BNB",
+};
+
+// ---------------------------------------------------------------------------
+// Wrapped native symbol per chain
+// ---------------------------------------------------------------------------
+export const WRAPPED_NATIVE_SYMBOL: Record<number, string> = {
+  1: "WETH",
+  8453: "WETH",
+  42161: "WETH",
+  137: "WMATIC",
+  56: "WBNB",
 };
 
 // ---------------------------------------------------------------------------
@@ -120,6 +136,21 @@ export const COMMON_TOKENS: Record<number, Record<string, `0x${string}`>> = {
     DAI: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
     WBTC: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
   },
+  137: {
+    USDC: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    "USDC.e": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+    USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    WETH: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+  },
+  56: {
+    USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    USDT: "0x55d398326f99059fF775485246999027B3197955",
+    WBNB: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    BUSD: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    DAI: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
+  },
 };
 
 /**
@@ -132,3 +163,8 @@ export function getCommonTokenAddress(
 ): `0x${string}` | undefined {
   return COMMON_TOKENS[chainId]?.[symbol.toUpperCase()];
 }
+
+// ---------------------------------------------------------------------------
+// Job fee rate (1%)
+// ---------------------------------------------------------------------------
+export const JOB_FEE_RATE = 0.01;
