@@ -48,10 +48,10 @@ echo ""
 
 # Step 2: Verify CLI
 blue "Step 2: Verifying CLI installation..."
-npx tsx bin/acp.ts --version > /dev/null 2>&1
+VERSION_OUTPUT=$(npx tsx bin/acp.ts --version 2>&1)
 
 if [ $? -eq 0 ]; then
-    green "✓ CLI is working correctly"
+    green "✓ CLI is working correctly ($VERSION_OUTPUT)"
 else
     echo "Error: CLI verification failed"
     exit 1

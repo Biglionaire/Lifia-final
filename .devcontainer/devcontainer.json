@@ -1,6 +1,6 @@
 {
   "name": "ACP CLI Development",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+  "image": "mcr.microsoft.com/devcontainers/base:bullseye",
   
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
@@ -24,5 +24,5 @@
 
   "postCreateCommand": "npm install",
 
-  "remoteUser": "node"
+  "remoteUser": "vscode"
 }
