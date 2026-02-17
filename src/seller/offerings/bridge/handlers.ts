@@ -8,7 +8,7 @@ import { getToken, getQuote } from "../_shared/lifi.js";
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run bridge
 // ---------------------------------------------------------------------------
-const SUPPORTED_FROM_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+const SUPPORTED_FROM_CHAINS = ["base"];
 const SUPPORTED_TO_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
 
 // ---------------------------------------------------------------------------
@@ -108,22 +108,15 @@ export function requestAdditionalFunds(req: any): {
   const amountHuman = Number(String(req?.amountHuman ?? "").trim());
   const token = String(req?.token ?? "USDC").toUpperCase();
   const fromChainKey = String(req?.fromChain ?? "base").toLowerCase();
-  const fromChainId = chainIdOf(fromChainKey);
 
-  // Look up token address from common-token table
-  const tokenAddress = fromChainId
-    ? getCommonTokenAddress(fromChainId, token)
-    : undefined;
+  // Always use Base chain (8453) for token address resolution since ACP operates on Base
+  const BASE_CHAIN_ID = 8453;
+
+  // Look up token address from common-token table on Base
+  const tokenAddress = getCommonTokenAddress(BASE_CHAIN_ID, token);
 
   if (!tokenAddress) {
-    // Unknown token — we still request funds, but the caller/ACP may need to resolve manually.
-    // Use zero address as fallback so the structure remains valid.
-    return {
-      content: `Send ${amountHuman} ${token} (${fromChainKey}) to executor=${recipient}. Token address not in lookup table — executor must be pre-funded or provide tokenAddress manually.`,
-      amount: amountHuman,
-      tokenAddress: "0x0000000000000000000000000000000000000000",
-      recipient,
-    };
+    throw new Error(`Token ${token} not found on Base chain. ACP only supports Base chain tokens.`);
   }
 
   return {

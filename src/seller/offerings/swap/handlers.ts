@@ -9,7 +9,7 @@ import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run swap
 // ---------------------------------------------------------------------------
-const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+const SUPPORTED_CHAINS = ["base"];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -139,19 +139,14 @@ export function requestAdditionalFunds(req: any): {
   const r = coerceRequest(req);
   const amountNum = Number(r.amountHuman);
   const chainKey = r.chain.toLowerCase();
-  const chainId = chainIdOf(chainKey);
+  
+  // Always use Base chain (8453) for token address resolution since ACP operates on Base
+  const BASE_CHAIN_ID = 8453;
 
-  const tokenAddress = chainId
-    ? getCommonTokenAddress(chainId, r.tokenIn)
-    : undefined;
+  const tokenAddress = getCommonTokenAddress(BASE_CHAIN_ID, r.tokenIn);
 
   if (!tokenAddress) {
-    return {
-      content: `Send ${r.amountHuman} ${r.tokenIn} (${chainKey}) to executor=${recipient}. Token address not in lookup table — executor must be pre-funded or provide tokenAddress manually.`,
-      amount: amountNum,
-      tokenAddress: "0x0000000000000000000000000000000000000000",
-      recipient,
-    };
+    throw new Error(`Token ${r.tokenIn} not found on Base chain. ACP only supports Base chain tokens.`);
   }
 
   return {

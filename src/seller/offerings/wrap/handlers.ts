@@ -46,7 +46,7 @@ const WETH_ABI = [
 // LI.FI uses zero address for native tokens
 const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-const SUPPORTED_CHAINS = ["ethereum", "base", "arbitrum", "polygon", "bsc"];
+const SUPPORTED_CHAINS = ["base"];
 
 // Wrapped native token symbol per chain
 const WRAPPED_SYMBOL: Record<number, string> = {
@@ -158,20 +158,25 @@ export function requestAdditionalFunds(req: any): {
 
   const r = coerceRequest(req);
   const amountNum = Number(r.amountHuman);
-  const chainId = chainIdOf(r.chain)!;
+  
+  // Always use Base chain (8453) since ACP operates on Base
+  const BASE_CHAIN_ID = 8453;
+  const chainId = BASE_CHAIN_ID;
   const nativeSymbol = NATIVE_TOKEN[chainId] ?? "ETH";
 
   if (r.action === "wrap") {
-    // Need native ETH to wrap
+    // For wrap action: use WETH address on Base instead of zero address
+    // ACP needs a valid ERC-20 contract to call decimals() on
+    const wethAddr = WETH_ADDRESS[chainId];
     return {
       content: `Send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping.`,
       amount: amountNum,
-      tokenAddress: NATIVE_TOKEN_ADDRESS,
+      tokenAddress: wethAddr,
       recipient,
     };
   }
 
-  // Need wrapped token to unwrap
+  // For unwrap action: use WETH address (already correct)
   const wethAddr = WETH_ADDRESS[chainId];
   const wrappedSymbol = WRAPPED_SYMBOL[chainId] ?? "WETH";
   return {
