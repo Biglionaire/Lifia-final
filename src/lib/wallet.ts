@@ -2,7 +2,7 @@
 // Wallet / agent info retrieval.
 // =============================================================================
 
-import client from "./client.js";
+import client, { retryWithBackoff } from "./client.js";
 
 export async function getMyAgentInfo(): Promise<{
   name: string;
@@ -25,6 +25,6 @@ export async function getMyAgentInfo(): Promise<{
     requirement: Record<string, any>;
   }[];
 }> {
-  const agent = await client.get("/acp/me");
+  const agent = await retryWithBackoff(() => client.get("/acp/me"));
   return agent.data.data;
 }

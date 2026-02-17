@@ -230,12 +230,41 @@ async function main() {
 
   setupCleanupHandlers();
 
-  let walletAddress: string;
-  try {
-    const agentData = await getMyAgentInfo();
-    walletAddress = agentData.walletAddress;
-  } catch (err) {
-    console.error("[seller] Failed to resolve wallet address:", err);
+  // Retry logic for wallet address resolution with exponential backoff
+  const MAX_STARTUP_RETRIES = 5;
+  const INITIAL_STARTUP_DELAY_MS = 2000;
+  let walletAddress: string | undefined;
+  
+  for (let attempt = 1; attempt <= MAX_STARTUP_RETRIES; attempt++) {
+    try {
+      const agentData = await getMyAgentInfo();
+      walletAddress = agentData.walletAddress;
+      break; // Success! Exit the retry loop
+    } catch (err) {
+      if (attempt === MAX_STARTUP_RETRIES) {
+        // Final attempt failed, exit the process
+        console.error(
+          `[seller] Failed to resolve wallet address after ${MAX_STARTUP_RETRIES} attempts:`,
+          err
+        );
+        process.exit(1);
+      }
+      
+      // Calculate delay with exponential backoff
+      const delayMs = INITIAL_STARTUP_DELAY_MS * Math.pow(2, attempt - 1);
+      console.warn(
+        `[seller] Failed to resolve wallet address (attempt ${attempt}/${MAX_STARTUP_RETRIES}), retrying in ${delayMs / 1000}s...`
+      );
+      console.warn(`[seller] Error:`, err);
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  // This should always be set if we get here, but TypeScript needs the check
+  if (!walletAddress) {
+    console.error("[seller] Failed to resolve wallet address: unknown error");
     process.exit(1);
   }
 
