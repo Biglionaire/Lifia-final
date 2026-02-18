@@ -39,5 +39,5 @@ Thumbs.db
 
 # Seller runtime artifacts
 seller.pid
-offerings/
-resources/
+/offerings/
+/resources/
