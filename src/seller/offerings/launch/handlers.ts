@@ -7,6 +7,12 @@ import { waitForSufficientBalance } from "../_shared/balance.js";
 import { calculateAmountWithFee, formatAmount } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const OFFERING_NAME = "launch";
+const USDC_DECIMALS = 6;
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function env(name: string): string {
@@ -19,6 +25,14 @@ function isHexAddress(s: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
+function countDecimals(value: number): number {
+  if (Math.floor(value) === value) return 0;
+  const str = value.toString();
+  const decimalIndex = str.indexOf(".");
+  if (decimalIndex === -1) return 0;
+  return str.length - decimalIndex - 1;
+}
+
 // ---------------------------------------------------------------------------
 // Validate
 // ---------------------------------------------------------------------------
@@ -27,6 +41,11 @@ export function validateRequirements(req: any): ValidationResult {
     const amount = Number(req?.amount ?? 0);
     if (!Number.isFinite(amount) || amount <= 0) {
       return { valid: false, reason: "amount must be a positive number" };
+    }
+
+    // Validate decimal precision for USDC (6 decimals)
+    if (countDecimals(amount) > USDC_DECIMALS) {
+      return { valid: false, reason: `amount cannot have more than ${USDC_DECIMALS} decimal places for USDC` };
     }
 
     const addressToTip = String(req?.addressToTip ?? "").trim();
@@ -66,7 +85,7 @@ export function requestAdditionalFunds(req: any): {
   const addressToTip = String(req?.addressToTip ?? "").trim();
 
   // Calculate total amount including job fee (250 USDC fixed fee)
-  const totalAmount = calculateAmountWithFee(amount, "launch");
+  const totalAmount = calculateAmountWithFee(amount, OFFERING_NAME);
 
   // USDC token address on Base chain
   const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, "USDC");
@@ -94,6 +113,9 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
     const amount = Number(req?.amount ?? 0);
     const addressToTip = getAddress(String(req?.addressToTip ?? "").trim());
 
+    // Calculate total amount including job fee
+    const totalAmount = calculateAmountWithFee(amount, OFFERING_NAME);
+
     // Get chain clients for Base
     const { publicClient, walletClient, chain } = getChainClients(ACP_CHAIN_ID);
 
@@ -108,15 +130,17 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
       };
     }
 
-    // USDC has 6 decimals
-    const usdcAmount = parseUnits(amount.toString(), 6);
+    // Convert amounts to USDC smallest unit (6 decimals)
+    const usdcAmount = parseUnits(amount.toString(), USDC_DECIMALS);
+    const totalUsdcAmount = parseUnits(totalAmount.toString(), USDC_DECIMALS);
 
     // Check executor balance with polling for incoming ACP funds
+    // We need the total amount (tip + fee) to be available
     const balanceResult = await waitForSufficientBalance({
       publicClient,
       tokenAddress: usdcAddress,
       walletAddress: account.address,
-      requiredAmount: usdcAmount,
+      requiredAmount: totalUsdcAmount,
       isNative: false,
       label: "launch",
     });
@@ -132,7 +156,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
             chain: "base",
             chainId: ACP_CHAIN_ID,
             token: "USDC",
-            needed: usdcAmount.toString(),
+            needed: totalUsdcAmount.toString(),
             have: balanceResult.balance.toString(),
             hint: "Ensure the executor is funded with USDC on Base chain.",
           },
