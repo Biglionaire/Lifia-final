@@ -1,6 +1,6 @@
 {
   "name": "swap",
-  "description": "Seller-executed same-chain token swap via LI.FI DEX aggregation. Buyer transfers funds to executor (ACP requiredFunds). Supports chains: ethereum, base, arbitrum, polygon, bsc. Any token supported via LI.FI.",
+  "description": "Seller-executed same-chain token swap via LI.FI DEX aggregation. Buyer transfers funds to executor (ACP requiredFunds). Supports Base chain only. Any token supported via LI.FI.",
   "jobFee": 0.01,
   "jobFeeType": "percentage",
   "requiredFunds": true,
@@ -23,7 +23,7 @@
       "chain": {
         "type": "string",
         "description": "Chain to execute swap on.",
-        "enum": ["ethereum", "base", "arbitrum", "polygon", "bsc"]
+        "enum": ["base"]
       },
       "receiver": {
         "type": "string",
