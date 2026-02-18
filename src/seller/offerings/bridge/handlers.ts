@@ -4,6 +4,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
+import { waitForSufficientBalance } from "../_shared/balance.js";
+import { calculateAmountWithFee, formatAmount } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run bridge
@@ -109,6 +111,11 @@ export function requestAdditionalFunds(req: any): {
   const token = String(req?.token ?? "USDC").toUpperCase();
   const fromChainKey = String(req?.fromChain ?? "base").toLowerCase();
 
+  // Calculate total amount including job fee
+  // For percentage fee: amount + (amount * feePercentage)
+  // This ensures the full bridge amount is available after the seller takes their fee
+  const totalAmount = calculateAmountWithFee(amountHuman, "bridge");
+
   // Always use Base chain for token address resolution since ACP operates on Base
   // Look up token address from common-token table on Base
   const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, token);
@@ -118,8 +125,8 @@ export function requestAdditionalFunds(req: any): {
   }
 
   return {
-    content: `Send ${amountHuman} ${token} (${fromChainKey}) to executor=${recipient} so the bridge can be executed.`,
-    amount: amountHuman,
+    content: `Send ${formatAmount(totalAmount)} ${token} (${fromChainKey}) to executor=${recipient} so the bridge can be executed. This includes ${amountHuman} ${token} for the bridge plus the job fee.`,
+    amount: totalAmount,
     tokenAddress,
     recipient,
   };
@@ -164,22 +171,19 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
 
     const fromAmount = parseUnits(amountHuman, Number(fromToken.decimals));
 
-    // Check executor balance — for ERC-20 tokens
+    // Check executor balance with polling for incoming ACP funds
     const isNative = fromToken.address === "0x0000000000000000000000000000000000000000";
-    let bal: bigint;
 
-    if (isNative) {
-      bal = await publicClient.getBalance({ address: account.address });
-    } else {
-      bal = await publicClient.readContract({
-        address: getAddress(fromToken.address),
-        abi: erc20Abi,
-        functionName: "balanceOf",
-        args: [account.address],
-      });
-    }
+    const balanceResult = await waitForSufficientBalance({
+      publicClient,
+      tokenAddress: fromToken.address,
+      walletAddress: account.address,
+      requiredAmount: fromAmount,
+      isNative,
+      label: "bridge",
+    });
 
-    if (bal < fromAmount) {
+    if (!balanceResult.ok) {
       return {
         deliverable: {
           type: "json",
@@ -191,7 +195,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
             chainId: fromChainId,
             token,
             needed: fromAmount.toString(),
-            have: bal.toString(),
+            have: balanceResult.balance.toString(),
             hint: "Ensure the executor is funded on the source chain.",
           },
         },

@@ -5,6 +5,8 @@ import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, WETH_ADDRESS, NATIVE_TOKEN, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getQuote } from "../_shared/lifi.js";
 import { parseWrapCommand, type WrapRequest } from "../_shared/command.js";
+import { waitForSufficientBalance } from "../_shared/balance.js";
+import { calculateAmountWithFee, formatAmount } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // WETH ABI (deposit = wrap, withdraw = unwrap)
@@ -159,6 +161,11 @@ export function requestAdditionalFunds(req: any): {
   const r = coerceRequest(req);
   const amountNum = Number(r.amountHuman);
   
+  // Calculate total amount including job fee
+  // For percentage fee: amount + (amount * feePercentage)
+  // This ensures the full wrap/unwrap amount is available after the seller takes their fee
+  const totalAmount = calculateAmountWithFee(amountNum, "wrap");
+  
   // Always use Base chain since ACP operates on Base
   const nativeSymbol = NATIVE_TOKEN[ACP_CHAIN_ID] ?? "ETH";
 
@@ -170,8 +177,8 @@ export function requestAdditionalFunds(req: any): {
       throw new Error(`WETH address not configured for Base chain (${ACP_CHAIN_ID})`);
     }
     return {
-      content: `Send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping.`,
-      amount: amountNum,
+      content: `Send ${formatAmount(totalAmount)} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping. This includes ${r.amountHuman} ${nativeSymbol} for the wrap plus the job fee.`,
+      amount: totalAmount,
       tokenAddress: wethAddr,
       recipient,
     };
@@ -184,8 +191,8 @@ export function requestAdditionalFunds(req: any): {
   }
   const wrappedSymbol = WRAPPED_SYMBOL[ACP_CHAIN_ID] ?? "WETH";
   return {
-    content: `Send ${r.amountHuman} ${wrappedSymbol} (${r.chain}) to executor=${recipient} for unwrapping.`,
-    amount: amountNum,
+    content: `Send ${formatAmount(totalAmount)} ${wrappedSymbol} (${r.chain}) to executor=${recipient} for unwrapping. This includes ${r.amountHuman} ${wrappedSymbol} for the unwrap plus the job fee.`,
+    amount: totalAmount,
     tokenAddress: wethAddr,
     recipient,
   };
@@ -217,10 +224,18 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
     const receiver = getAddress(r.receiver);
     const amountWei = parseEther(r.amountHuman);
 
-    // Check balance
+    // Check balance with polling for incoming ACP funds
     if (r.action === "wrap") {
-      const ethBalance = await publicClient.getBalance({ address: account.address });
-      if (ethBalance < amountWei) {
+      const balanceResult = await waitForSufficientBalance({
+        publicClient,
+        tokenAddress: "0x0000000000000000000000000000000000000000",
+        walletAddress: account.address,
+        requiredAmount: amountWei,
+        isNative: true,
+        label: "wrap",
+      });
+
+      if (!balanceResult.ok) {
         return {
           deliverable: {
             type: "json",
@@ -230,19 +245,22 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
               executor: account.address,
               chain: r.chain,
               needed: amountWei.toString(),
-              have: ethBalance.toString(),
+              have: balanceResult.balance.toString(),
             },
           },
         };
       }
     } else {
-      const wethBalance: bigint = await publicClient.readContract({
-        address: wethAddress,
-        abi: WETH_ABI,
-        functionName: "balanceOf",
-        args: [account.address],
+      const balanceResult = await waitForSufficientBalance({
+        publicClient,
+        tokenAddress: wethAddress,
+        walletAddress: account.address,
+        requiredAmount: amountWei,
+        isNative: false,
+        label: "unwrap",
       });
-      if (wethBalance < amountWei) {
+
+      if (!balanceResult.ok) {
         return {
           deliverable: {
             type: "json",
@@ -252,7 +270,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
               executor: account.address,
               chain: r.chain,
               needed: amountWei.toString(),
-              have: wethBalance.toString(),
+              have: balanceResult.balance.toString(),
             },
           },
         };

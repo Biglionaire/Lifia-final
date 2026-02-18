@@ -5,6 +5,8 @@ import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
 import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
+import { waitForSufficientBalance } from "../_shared/balance.js";
+import { calculateAmountWithFee, formatAmount } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run swap
@@ -140,6 +142,11 @@ export function requestAdditionalFunds(req: any): {
   const amountNum = Number(r.amountHuman);
   const chainKey = r.chain.toLowerCase();
   
+  // Calculate total amount including job fee
+  // For percentage fee: amount + (amount * feePercentage)
+  // This ensures the full swap amount is available after the seller takes their fee
+  const totalAmount = calculateAmountWithFee(amountNum, "swap");
+  
   // Always use Base chain for token address resolution since ACP operates on Base
   const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, r.tokenIn);
 
@@ -148,8 +155,8 @@ export function requestAdditionalFunds(req: any): {
   }
 
   return {
-    content: `Send ${r.amountHuman} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed.`,
-    amount: amountNum,
+    content: `Send ${formatAmount(totalAmount)} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed. This includes ${r.amountHuman} ${r.tokenIn} for the swap plus the job fee.`,
+    amount: totalAmount,
     tokenAddress,
     recipient,
   };
@@ -185,22 +192,19 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
 
     const fromAmount = parseUnits(r.amountHuman, Number(fromTokenInfo.decimals));
 
-    // Check executor balance
+    // Check executor balance with polling for incoming ACP funds
     const isNative = fromTokenInfo.address === "0x0000000000000000000000000000000000000000";
-    let bal: bigint;
 
-    if (isNative) {
-      bal = await publicClient.getBalance({ address: account.address });
-    } else {
-      bal = await publicClient.readContract({
-        address: getAddress(fromTokenInfo.address),
-        abi: erc20Abi,
-        functionName: "balanceOf",
-        args: [account.address],
-      });
-    }
+    const balanceResult = await waitForSufficientBalance({
+      publicClient,
+      tokenAddress: fromTokenInfo.address,
+      walletAddress: account.address,
+      requiredAmount: fromAmount,
+      isNative,
+      label: "swap",
+    });
 
-    if (bal < fromAmount) {
+    if (!balanceResult.ok) {
       return {
         deliverable: {
           type: "json",
@@ -212,7 +216,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
             chainId,
             tokenIn: r.tokenIn,
             needed: fromAmount.toString(),
-            have: bal.toString(),
+            have: balanceResult.balance.toString(),
             hint: "Ensure the executor is funded on the source chain.",
           },
         },
