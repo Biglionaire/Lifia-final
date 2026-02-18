@@ -41,7 +41,7 @@ export function parseBridgeCommand(text: string): BridgeRequest {
   const input = (text ?? "").trim();
 
   const re =
-    /^(?<verb>bridge)\s+(?<amount>\d+(?:\.\d+)?)\s+(?<token>[A-Za-z0-9:_\.\-]+)\s+from\s+(?<fromChain>[A-Za-z0-9_\-]+)(?:\s+chain)?\s+to\s+(?<toChain>[A-Za-z0-9_\-]+)(?:\s+chain)?(?:\s+sender\s+(?<sender>0x[a-fA-F0-9]{40}))?(?:\s+receiver(?:\s+address)?\s+(?<receiver>0x[a-fA-F0-9]{40}))?(?:\s+toToken\s+(?<toToken>[A-Za-z0-9:_\.\-]+))?(?:\s+slippage\s+(?<slippage>\d+(?:\.\d+)?))?\s*$/i;
+    /^(?<verb>bridge)\s+(?<amount>\d+(?:\.\d+)?)\s+(?<token>0x[a-fA-F0-9]{40}|[A-Za-z0-9:_\.\-]+)\s+from\s+(?<fromChain>[A-Za-z0-9_\-]+)(?:\s+chain)?\s+to\s+(?<toChain>[A-Za-z0-9_\-]+)(?:\s+chain)?(?:\s+sender\s+(?<sender>0x[a-fA-F0-9]{40}))?(?:\s+receiver(?:\s+address)?\s+(?<receiver>0x[a-fA-F0-9]{40}))?(?:\s+toToken\s+(?<toToken>0x[a-fA-F0-9]{40}|[A-Za-z0-9:_\.\-]+))?(?:\s+slippage\s+(?<slippage>\d+(?:\.\d+)?))?\s*$/i;
 
   const m = input.match(re);
   if (!m) throw new Error(`Unrecognized command. Example: bridge 5 USDC from base to arbitrum receiver 0x...`);
@@ -67,7 +67,7 @@ export function parseSwapCommand(text: string): SwapRequest {
   // swap 5 USDC to ETH on base receiver 0x...
   // swap 100 USDC to WETH on base sender 0x... receiver 0x... slippage 0.5
   const re =
-    /^(?<verb>swap)\s+(?<amount>\d+(?:\.\d+)?)\s+(?<tokenIn>[A-Za-z0-9:_\.\-]+)\s+to\s+(?<tokenOut>[A-Za-z0-9:_\.\-]+)\s+on\s+(?<chain>[A-Za-z0-9_\-]+)(?:\s+chain)?(?:\s+sender\s+(?<sender>0x[a-fA-F0-9]{40}))?(?:\s+receiver(?:\s+address)?\s+(?<receiver>0x[a-fA-F0-9]{40}))?(?:\s+slippage\s+(?<slippage>\d+(?:\.\d+)?))?\s*$/i;
+    /^(?<verb>swap)\s+(?<amount>\d+(?:\.\d+)?)\s+(?<tokenIn>0x[a-fA-F0-9]{40}|[A-Za-z0-9:_\.\-]+)\s+to\s+(?<tokenOut>0x[a-fA-F0-9]{40}|[A-Za-z0-9:_\.\-]+)\s+on\s+(?<chain>[A-Za-z0-9_\-]+)(?:\s+chain)?(?:\s+sender\s+(?<sender>0x[a-fA-F0-9]{40}))?(?:\s+receiver(?:\s+address)?\s+(?<receiver>0x[a-fA-F0-9]{40}))?(?:\s+slippage\s+(?<slippage>\d+(?:\.\d+)?))?\s*$/i;
 
   const m = input.match(re);
   if (!m) throw new Error(`Unrecognized command. Example: swap 5 USDC to ETH on base receiver 0x...`);
