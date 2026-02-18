@@ -41,7 +41,7 @@ export async function waitForSufficientBalance(opts: {
   } = opts;
 
   const startTime = Date.now();
-  const maxAttempts = Math.ceil(maxWaitMs / pollIntervalMs);
+  const maxAttempts = Math.floor(maxWaitMs / pollIntervalMs);
   let attempt = 0;
 
   // Helper to get balance

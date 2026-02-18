@@ -167,7 +167,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
 
     // Check executor balance with polling for incoming ACP funds
     const isNative = fromToken.address === "0x0000000000000000000000000000000000000000";
-    
+
     const balanceResult = await waitForSufficientBalance({
       publicClient,
       tokenAddress: fromToken.address,
