@@ -31,23 +31,23 @@ function loadOfferingConfig(offeringName: string): OfferingConfig {
 /**
  * Calculate the total amount to request from the buyer, including the job fee.
  * 
- * For percentage-based fees, the buyer transfers: amount + (amount * feePercentage)
- * For fixed fees, the buyer transfers: amount + fixedFee
+ * For percentage-based fees, the buyer transfers: amount / (1 - feePercentage)
+ * This ensures that after ACP deducts the fee, the executor receives exactly `amount`.
  * 
- * This ensures the full requested amount is available for the operation after
- * the seller takes their fee.
+ * For fixed fees, the buyer transfers: amount + fixedFee
  * 
  * @param amount - The base amount needed for the operation (e.g., swap amount)
  * @param offeringName - Name of the offering to load fee config from
- * @returns Total amount the buyer should transfer (amount + fee)
+ * @returns Total amount the buyer should transfer to ensure executor receives `amount` after fee
  */
 export function calculateAmountWithFee(amount: number, offeringName: string): number {
   const config = loadOfferingConfig(offeringName);
   
   if (config.jobFeeType === "percentage") {
-    // For percentage fee: buyer pays amount + (amount * feePercentage)
-    // Example: 0.1 USDC with 1% fee = 0.1 + (0.1 * 0.01) = 0.101 USDC
-    return amount + (amount * config.jobFee);
+    // For percentage fee: amount / (1 - feePercentage) ensures executor receives exactly `amount`
+    // Example: 0.00001 WBTC with 1% (0.01) fee = 0.00001 / (1 - 0.01) = 0.00001 / 0.99 ≈ 0.0000101010
+    // After ACP deducts 1%: 0.0000101010 - (0.0000101010 * 0.01) ≈ 0.00001 WBTC (exact amount needed)
+    return amount / (1 - config.jobFee);
   } else {
     // For fixed fee: buyer pays amount + fixedFee
     // Example: 0.1 USDC with 5 USDC fixed fee = 0.1 + 5 = 5.1 USDC
