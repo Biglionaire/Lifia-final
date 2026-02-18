@@ -1,0 +1,21 @@
+{
+  "name": "launch",
+  "description": "Send a USDC tip to a specified address. Buyer provides the amount and destination address, executor sends the USDC tip.",
+  "jobFee": 250,
+  "jobFeeType": "fixed",
+  "requiredFunds": true,
+  "requirement": {
+    "type": "object",
+    "properties": {
+      "amount": {
+        "type": "number",
+        "description": "Amount of USDC to tip"
+      },
+      "addressToTip": {
+        "type": "string",
+        "description": "Destination wallet address to send the USDC tip to"
+      }
+    },
+    "required": ["amount", "addressToTip"]
+  }
+}
