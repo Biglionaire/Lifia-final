@@ -6,7 +6,7 @@ import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../
 import { getToken, getQuote } from "../_shared/lifi.js";
 import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
 import { waitForSufficientBalance } from "../_shared/balance.js";
-import { calculateAmountWithFee } from "../_shared/fee.js";
+import { calculateAmountWithFee, formatAmount } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run swap
@@ -155,7 +155,7 @@ export function requestAdditionalFunds(req: any): {
   }
 
   return {
-    content: `Send ${totalAmount} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed. This includes ${r.amountHuman} ${r.tokenIn} for the swap plus the job fee.`,
+    content: `Send ${formatAmount(totalAmount)} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed. This includes ${r.amountHuman} ${r.tokenIn} for the swap plus the job fee.`,
     amount: totalAmount,
     tokenAddress,
     recipient,

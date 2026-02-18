@@ -5,7 +5,7 @@ import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
 import { waitForSufficientBalance } from "../_shared/balance.js";
-import { calculateAmountWithFee } from "../_shared/fee.js";
+import { calculateAmountWithFee, formatAmount } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run bridge
@@ -125,7 +125,7 @@ export function requestAdditionalFunds(req: any): {
   }
 
   return {
-    content: `Send ${totalAmount} ${token} (${fromChainKey}) to executor=${recipient} so the bridge can be executed. This includes ${amountHuman} ${token} for the bridge plus the job fee.`,
+    content: `Send ${formatAmount(totalAmount)} ${token} (${fromChainKey}) to executor=${recipient} so the bridge can be executed. This includes ${amountHuman} ${token} for the bridge plus the job fee.`,
     amount: totalAmount,
     tokenAddress,
     recipient,

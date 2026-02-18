@@ -17,8 +17,15 @@ interface OfferingConfig {
  */
 function loadOfferingConfig(offeringName: string): OfferingConfig {
   const offeringPath = path.resolve(__dirname, "..", offeringName, "offering.json");
-  const configText = fs.readFileSync(offeringPath, "utf-8");
-  return JSON.parse(configText);
+  
+  try {
+    const configText = fs.readFileSync(offeringPath, "utf-8");
+    return JSON.parse(configText);
+  } catch (err: any) {
+    throw new Error(
+      `Failed to load offering config for "${offeringName}" at ${offeringPath}: ${err?.message ?? err}`
+    );
+  }
 }
 
 /**
@@ -46,4 +53,20 @@ export function calculateAmountWithFee(amount: number, offeringName: string): nu
     // Example: 0.1 USDC with 5 USDC fixed fee = 0.1 + 5 = 5.1 USDC
     return amount + config.jobFee;
   }
+}
+
+/**
+ * Format a number for display, removing excessive decimal places.
+ * Uses up to 8 significant digits, which is appropriate for crypto amounts.
+ * 
+ * @param num - Number to format
+ * @returns Formatted string representation
+ */
+export function formatAmount(num: number): string {
+  // For very small numbers, use full precision
+  if (num < 0.00000001) return num.toString();
+  
+  // For normal amounts, use toPrecision to get significant figures
+  // then remove trailing zeros
+  return parseFloat(num.toPrecision(8)).toString();
 }
