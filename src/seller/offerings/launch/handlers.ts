@@ -27,7 +27,18 @@ function isHexAddress(s: string): boolean {
 
 function countDecimals(value: number): number {
   if (Math.floor(value) === value) return 0;
-  const str = value.toString();
+  // Convert to string and handle scientific notation
+  let str = value.toString();
+  if (str.includes('e')) {
+    const parts = str.split('e');
+    const exp = parseInt(parts[1], 10);
+    if (exp < 0) return Math.abs(exp);
+    return 0;
+  }
+  // For very long decimal representations due to floating-point arithmetic,
+  // use toFixed to normalize, then count actual significant decimals
+  const normalized = parseFloat(value.toFixed(15));
+  str = normalized.toString();
   const decimalIndex = str.indexOf(".");
   if (decimalIndex === -1) return 0;
   return str.length - decimalIndex - 1;
