@@ -5,6 +5,7 @@ import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
 import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
+import { waitForSufficientBalance } from "../_shared/balance.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run swap
@@ -185,22 +186,19 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
 
     const fromAmount = parseUnits(r.amountHuman, Number(fromTokenInfo.decimals));
 
-    // Check executor balance
+    // Check executor balance with polling for incoming ACP funds
     const isNative = fromTokenInfo.address === "0x0000000000000000000000000000000000000000";
-    let bal: bigint;
+    
+    const balanceResult = await waitForSufficientBalance({
+      publicClient,
+      tokenAddress: fromTokenInfo.address,
+      walletAddress: account.address,
+      requiredAmount: fromAmount,
+      isNative,
+      label: "swap",
+    });
 
-    if (isNative) {
-      bal = await publicClient.getBalance({ address: account.address });
-    } else {
-      bal = await publicClient.readContract({
-        address: getAddress(fromTokenInfo.address),
-        abi: erc20Abi,
-        functionName: "balanceOf",
-        args: [account.address],
-      });
-    }
-
-    if (bal < fromAmount) {
+    if (!balanceResult.ok) {
       return {
         deliverable: {
           type: "json",
@@ -212,7 +210,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
             chainId,
             tokenIn: r.tokenIn,
             needed: fromAmount.toString(),
-            have: bal.toString(),
+            have: balanceResult.balance.toString(),
             hint: "Ensure the executor is funded on the source chain.",
           },
         },

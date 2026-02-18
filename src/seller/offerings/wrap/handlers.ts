@@ -5,6 +5,7 @@ import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, WETH_ADDRESS, NATIVE_TOKEN, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getQuote } from "../_shared/lifi.js";
 import { parseWrapCommand, type WrapRequest } from "../_shared/command.js";
+import { waitForSufficientBalance } from "../_shared/balance.js";
 
 // ---------------------------------------------------------------------------
 // WETH ABI (deposit = wrap, withdraw = unwrap)
@@ -217,10 +218,18 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
     const receiver = getAddress(r.receiver);
     const amountWei = parseEther(r.amountHuman);
 
-    // Check balance
+    // Check balance with polling for incoming ACP funds
     if (r.action === "wrap") {
-      const ethBalance = await publicClient.getBalance({ address: account.address });
-      if (ethBalance < amountWei) {
+      const balanceResult = await waitForSufficientBalance({
+        publicClient,
+        tokenAddress: "0x0000000000000000000000000000000000000000",
+        walletAddress: account.address,
+        requiredAmount: amountWei,
+        isNative: true,
+        label: "wrap",
+      });
+
+      if (!balanceResult.ok) {
         return {
           deliverable: {
             type: "json",
@@ -230,19 +239,22 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
               executor: account.address,
               chain: r.chain,
               needed: amountWei.toString(),
-              have: ethBalance.toString(),
+              have: balanceResult.balance.toString(),
             },
           },
         };
       }
     } else {
-      const wethBalance: bigint = await publicClient.readContract({
-        address: wethAddress,
-        abi: WETH_ABI,
-        functionName: "balanceOf",
-        args: [account.address],
+      const balanceResult = await waitForSufficientBalance({
+        publicClient,
+        tokenAddress: wethAddress,
+        walletAddress: account.address,
+        requiredAmount: amountWei,
+        isNative: false,
+        label: "unwrap",
       });
-      if (wethBalance < amountWei) {
+
+      if (!balanceResult.ok) {
         return {
           deliverable: {
             type: "json",
@@ -252,7 +264,7 @@ export async function executeJob(req: any): Promise<ExecuteJobResult> {
               executor: account.address,
               chain: r.chain,
               needed: amountWei.toString(),
-              have: wethBalance.toString(),
+              have: balanceResult.balance.toString(),
             },
           },
         };
