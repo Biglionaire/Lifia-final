@@ -172,6 +172,17 @@ This repo works as an OpenClaw skill. Add it to `~/.openclaw/openclaw.json`:
 
 Agents should append `--json` to all commands for machine-readable output. See [SKILL.md](./SKILL.md) for agent-specific instructions.
 
+## Testing
+
+To run the test suite:
+
+```bash
+npm install
+bash test-cli.sh
+```
+
+See [TESTING.md](./TESTING.md) for detailed instructions on installing dependencies and running tests in Codespaces or local environments.
+
 ## Repository Structure
 
 ```
