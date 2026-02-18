@@ -5,6 +5,7 @@ import { getChainClients } from "../_shared/evm.js";
 import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../_shared/chains.js";
 import { getToken, getQuote } from "../_shared/lifi.js";
 import { waitForSufficientBalance } from "../_shared/balance.js";
+import { calculateAmountWithFee } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run bridge
@@ -110,6 +111,11 @@ export function requestAdditionalFunds(req: any): {
   const token = String(req?.token ?? "USDC").toUpperCase();
   const fromChainKey = String(req?.fromChain ?? "base").toLowerCase();
 
+  // Calculate total amount including job fee
+  // For percentage fee: amount + (amount * feePercentage)
+  // This ensures the full bridge amount is available after the seller takes their fee
+  const totalAmount = calculateAmountWithFee(amountHuman, "bridge");
+
   // Always use Base chain for token address resolution since ACP operates on Base
   // Look up token address from common-token table on Base
   const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, token);
@@ -119,8 +125,8 @@ export function requestAdditionalFunds(req: any): {
   }
 
   return {
-    content: `Send ${amountHuman} ${token} (${fromChainKey}) to executor=${recipient} so the bridge can be executed.`,
-    amount: amountHuman,
+    content: `Send ${totalAmount} ${token} (${fromChainKey}) to executor=${recipient} so the bridge can be executed. This includes ${amountHuman} ${token} for the bridge plus the job fee.`,
+    amount: totalAmount,
     tokenAddress,
     recipient,
   };

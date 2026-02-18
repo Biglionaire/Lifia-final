@@ -6,6 +6,7 @@ import { chainIdOf, getCommonTokenAddress, VIEM_CHAINS, ACP_CHAIN_ID } from "../
 import { getToken, getQuote } from "../_shared/lifi.js";
 import { parseSwapCommand, type SwapRequest } from "../_shared/command.js";
 import { waitForSufficientBalance } from "../_shared/balance.js";
+import { calculateAmountWithFee } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // Supported chains for executor-run swap
@@ -141,6 +142,11 @@ export function requestAdditionalFunds(req: any): {
   const amountNum = Number(r.amountHuman);
   const chainKey = r.chain.toLowerCase();
   
+  // Calculate total amount including job fee
+  // For percentage fee: amount + (amount * feePercentage)
+  // This ensures the full swap amount is available after the seller takes their fee
+  const totalAmount = calculateAmountWithFee(amountNum, "swap");
+  
   // Always use Base chain for token address resolution since ACP operates on Base
   const tokenAddress = getCommonTokenAddress(ACP_CHAIN_ID, r.tokenIn);
 
@@ -149,8 +155,8 @@ export function requestAdditionalFunds(req: any): {
   }
 
   return {
-    content: `Send ${r.amountHuman} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed.`,
-    amount: amountNum,
+    content: `Send ${totalAmount} ${r.tokenIn} (${chainKey}) to executor=${recipient} so the swap can be executed. This includes ${r.amountHuman} ${r.tokenIn} for the swap plus the job fee.`,
+    amount: totalAmount,
     tokenAddress,
     recipient,
   };

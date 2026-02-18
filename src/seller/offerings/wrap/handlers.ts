@@ -6,6 +6,7 @@ import { chainIdOf, WETH_ADDRESS, NATIVE_TOKEN, VIEM_CHAINS, ACP_CHAIN_ID } from
 import { getQuote } from "../_shared/lifi.js";
 import { parseWrapCommand, type WrapRequest } from "../_shared/command.js";
 import { waitForSufficientBalance } from "../_shared/balance.js";
+import { calculateAmountWithFee } from "../_shared/fee.js";
 
 // ---------------------------------------------------------------------------
 // WETH ABI (deposit = wrap, withdraw = unwrap)
@@ -160,6 +161,11 @@ export function requestAdditionalFunds(req: any): {
   const r = coerceRequest(req);
   const amountNum = Number(r.amountHuman);
   
+  // Calculate total amount including job fee
+  // For percentage fee: amount + (amount * feePercentage)
+  // This ensures the full wrap/unwrap amount is available after the seller takes their fee
+  const totalAmount = calculateAmountWithFee(amountNum, "wrap");
+  
   // Always use Base chain since ACP operates on Base
   const nativeSymbol = NATIVE_TOKEN[ACP_CHAIN_ID] ?? "ETH";
 
@@ -171,8 +177,8 @@ export function requestAdditionalFunds(req: any): {
       throw new Error(`WETH address not configured for Base chain (${ACP_CHAIN_ID})`);
     }
     return {
-      content: `Send ${r.amountHuman} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping.`,
-      amount: amountNum,
+      content: `Send ${totalAmount} ${nativeSymbol} (${r.chain}) to executor=${recipient} for wrapping. This includes ${r.amountHuman} ${nativeSymbol} for the wrap plus the job fee.`,
+      amount: totalAmount,
       tokenAddress: wethAddr,
       recipient,
     };
@@ -185,8 +191,8 @@ export function requestAdditionalFunds(req: any): {
   }
   const wrappedSymbol = WRAPPED_SYMBOL[ACP_CHAIN_ID] ?? "WETH";
   return {
-    content: `Send ${r.amountHuman} ${wrappedSymbol} (${r.chain}) to executor=${recipient} for unwrapping.`,
-    amount: amountNum,
+    content: `Send ${totalAmount} ${wrappedSymbol} (${r.chain}) to executor=${recipient} for unwrapping. This includes ${r.amountHuman} ${wrappedSymbol} for the unwrap plus the job fee.`,
+    amount: totalAmount,
     tokenAddress: wethAddr,
     recipient,
   };
