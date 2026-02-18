@@ -44,9 +44,14 @@ export function calculateAmountWithFee(amount: number, offeringName: string): nu
   const config = loadOfferingConfig(offeringName);
   
   if (config.jobFeeType === "percentage") {
+    // Validate that fee is less than 100%
+    if (config.jobFee >= 1) {
+      throw new Error(`Invalid jobFee: ${config.jobFee}. Fee percentage must be less than 1.0 (100%)`);
+    }
+    
     // For percentage fee: amount / (1 - feePercentage) ensures executor receives exactly `amount`
-    // Example: 0.00001 WBTC with 1% (0.01) fee = 0.00001 / (1 - 0.01) = 0.00001 / 0.99 ≈ 0.0000101010
-    // After ACP deducts 1%: 0.0000101010 - (0.0000101010 * 0.01) ≈ 0.00001 WBTC (exact amount needed)
+    // Example: 0.00001 WBTC with 1% (0.01) fee = 0.00001 / (1 - 0.01) = 0.00001 / 0.99 = 0.000010101010... (repeating)
+    // After ACP deducts 1%: 0.0000101010 - (0.0000101010 * 0.01) = 0.00001 WBTC (exact amount needed)
     return amount / (1 - config.jobFee);
   } else {
     // For fixed fee: buyer pays amount + fixedFee
