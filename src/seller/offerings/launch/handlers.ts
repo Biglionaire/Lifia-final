@@ -31,12 +31,16 @@ function countDecimals(value: number): number {
   let str = value.toString();
   if (str.includes('e')) {
     const parts = str.split('e');
+    // Validate scientific notation format
+    if (parts.length !== 2) return 0;
     const exp = parseInt(parts[1], 10);
+    if (!Number.isFinite(exp)) return 0;
     if (exp < 0) return Math.abs(exp);
     return 0;
   }
   // For very long decimal representations due to floating-point arithmetic,
-  // use toFixed to normalize, then count actual significant decimals
+  // use toFixed(15) to normalize - 15 decimals is sufficient to handle JavaScript's
+  // IEEE 754 double precision (53 bits mantissa ~= 15.95 decimal digits)
   const normalized = parseFloat(value.toFixed(15));
   str = normalized.toString();
   const decimalIndex = str.indexOf(".");
